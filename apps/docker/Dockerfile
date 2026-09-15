@@ -52,6 +52,8 @@ ARG CMODULES="static"
 ARG CSCRIPTS_DEFAULT_LINKAGE="static"
 ARG CWITH_WARNINGS="ON"
 ARG CMAKE_EXTRA_OPTIONS=""
+# XorWoW: compile jobs. 0 = all cores + 1 (upstream default); lower keeps the live server responsive
+ARG MTHREADS=0
 ARG GIT_DISCOVERY_ACROSS_FILESYSTEM=1
 
 ARG CCACHE_DIR="/ccache"
@@ -102,7 +104,7 @@ RUN --mount=type=cache,target=/ccache,sharing=locked \
        -DCMAKE_CXX_COMPILER_LAUNCHER="ccache"          \
        -DCMAKE_C_COMPILER_LAUNCHER="ccache"            \
        -DBoost_USE_STATIC_LIBS="ON"                    \
-    && cmake --build . --config "$CTYPE" -j $(($(nproc) + 1)) \
+    && cmake --build . --config "$CTYPE" -j $([ "$MTHREADS" -gt 0 ] && echo "$MTHREADS" || echo $(($(nproc) + 1))) \
     && cmake --install . --config "$CTYPE"
 
 #############################
