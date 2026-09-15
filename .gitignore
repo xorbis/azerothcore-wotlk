@@ -129,6 +129,12 @@ __pycache__/
 #
 # ==================
 
+# XorWoW: version the hand-written server customisations on the xorwow branch.
+# Upstream ignores these so their own merges stay clean; we want them in history.
+!/src/server/scripts/Custom/*
+!/data/sql/custom/*
+# Official modules live in modules/<mod-name> as git submodules (git submodule add -f).
+
 # Live-stack e2e private / local tooling (scratch tests stay uncommitted)
 e2e/local/**
 !e2e/local/README.md
