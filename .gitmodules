@@ -1,3 +1,4 @@
 [submodule "modules/mod-playerbots"]
 	path = modules/mod-playerbots
-	url = https://github.com/mod-playerbots/mod-playerbots.git
+	url = https://github.com/xorbis/mod-playerbots.git
+	branch = xorwow
