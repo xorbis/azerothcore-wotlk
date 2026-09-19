@@ -6,3 +6,7 @@
 	path = modules/mod-guild-tax
 	url = https://github.com/xorbis/mod-guild-tax.git
 	branch = main
+[submodule "modules/mod-llm-chatter"]
+	path = modules/mod-llm-chatter
+	url = https://github.com/Hokken/mod-llm-chatter.git
+	branch = master
