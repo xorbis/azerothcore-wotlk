@@ -10,3 +10,7 @@
 	path = modules/mod-hunts
 	url = https://github.com/xorbis/mod-hunts.git
 	branch = xorwow
+[submodule "modules/mod-transmog-plus"]
+	path = modules/mod-transmog-plus
+	url = https://github.com/xorbis/mod-transmog-plus.git
+	branch = xorwow
