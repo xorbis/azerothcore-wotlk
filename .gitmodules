@@ -8,5 +8,5 @@
 	branch = main
 [submodule "modules/mod-hunts"]
 	path = modules/mod-hunts
-	url = https://github.com/Hisha/mod-hunts.git
-	branch = main
+	url = https://github.com/xorbis/mod-hunts.git
+	branch = xorwow
