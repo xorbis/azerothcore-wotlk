@@ -606,7 +606,11 @@ namespace lfg
         LfgJoinResultData joinData;
         LfgGuidSet players;
         uint32 rDungeonId = 0;
-        bool isContinue = grp && grp->isLFGGroup() && GetState(gguid) != LFG_STATE_FINISHED_DUNGEON;
+        // XorWoW: a group keeps GROUPTYPE_LFG until it is disbanded, but its stored dungeon is zeroed
+        // whenever its lfg state drops back to LFG_STATE_NONE (LfgGroupData::SetState). Such a group has
+        // nothing to continue: queue it like a normal party instead of replacing the chosen dungeons
+        // with dungeon 0, which the client reports as "One or more dungeons was not valid".
+        bool isContinue = grp && grp->isLFGGroup() && GetState(gguid) != LFG_STATE_FINISHED_DUNGEON && GetDungeon(gguid);
 
         if (grp && (grp->isBGGroup() || grp->isBFGroup()))
             return;

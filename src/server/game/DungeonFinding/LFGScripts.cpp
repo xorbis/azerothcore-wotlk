@@ -234,7 +234,8 @@ namespace lfg
         if (!isLFG)
             return;
 
-        if (state != LFG_STATE_FINISHED_DUNGEON && group) // Need more players to finish the dungeon
+        // XorWoW: dungeonId is 0 for a group whose lfg state fell back to NONE (see LFGMgr::JoinLfg) - no dungeon to continue
+        if (state != LFG_STATE_FINISHED_DUNGEON && dungeonId && group) // Need more players to finish the dungeon
         {
             if (Player* leader = ObjectAccessor::FindConnectedPlayer(sLFGMgr->GetLeader(gguid)))
             {
