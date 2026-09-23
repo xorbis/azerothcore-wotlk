@@ -18,6 +18,7 @@
 // This is where scripts' loading functions should be declared:
 // void MyExampleScript()
 void AddSC_xorwow_guild_bank_tab();   // ".guild buytab" - guild bank tabs at the realm's price
+void AddSC_xorwow_engineering_arrows();   // engineering bullet recipes make arrows too, ".ammo"
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -25,4 +26,5 @@ void AddCustomScripts()
 {
     // MyExampleScript()
     AddSC_xorwow_guild_bank_tab();
+    AddSC_xorwow_engineering_arrows();
 }
