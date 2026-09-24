@@ -47,6 +47,11 @@ void WhoListCacheMgr::Update()
 
         wstrToLower(widePlayerName);
 
+        // XorWoW: bots are listed as "Name*", like their name query (see SendNameQueryOpcode); the
+        // lowercase name used for the /who filters stays the plain one
+        if (player->GetSession()->IsBot())
+            playerName += '*';
+
         std::string guildName = sGuildMgr->GetGuildNameById(player->GetGuildId());
         std::wstring wideGuildName;
 

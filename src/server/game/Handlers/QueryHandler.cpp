@@ -46,6 +46,16 @@ void WorldSession::SendNameQueryOpcode(ObjectGuid guid)
 
     nameQueryResponse.NameUnknown = false;
     nameQueryResponse.Name = playerData->Name;
+    // XorWoW: bots (random bots and alts played by the bot AI) are named "Name*", so the client shows
+    // the mark everywhere it draws the name from its name cache: over their heads, target and party
+    // frames, chat. Only while the bot is online; the "*" is stripped again by normalizePlayerName,
+    // so whispering, inviting or mailing "Name*" still reaches the character.
+    std::string botName;
+    if (player && player->GetSession()->IsBot())
+    {
+        botName = playerData->Name + '*';
+        nameQueryResponse.Name = botName;   // a view: botName has to outlive the Write() below
+    }
     nameQueryResponse.Race = player ? player->getRace() : playerData->Race;
     nameQueryResponse.Sex = player ? player->getGender() : playerData->Sex;
     nameQueryResponse.Class = player ? player->getClass() : playerData->Class;

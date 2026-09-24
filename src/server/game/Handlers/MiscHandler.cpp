@@ -278,6 +278,10 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
     wstrToLower(wpacketPlayerName);
     wstrToLower(wpacketGuildName);
 
+    // XorWoW: "/who Name*" (a bot's name as the client shows it) matches the plain name
+    if (!wpacketPlayerName.empty() && wpacketPlayerName.back() == L'*')
+        wpacketPlayerName.pop_back();
+
     // client send in case not set max level value 100 but Acore supports 255 max level,
     // update it to show GMs with characters after 100 level
     if (levelMax >= MAX_LEVEL)
