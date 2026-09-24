@@ -10,6 +10,12 @@
  * not there on the previous check: "XorWoW\tNODES;<name>,<name>..." (an addon whisper to the
  * player). The addon plays the sound the player picked in its options.
  *
+ * Quest pickups are left out: many carry a herbalism or mining lock next to their plain "open" one
+ * (Alterac Granite, Laden Mushroom, Mana Berry Bush...), so tracking shows them, but they hold
+ * nothing without the quest. A node counts only when its loot has at least one item that drops
+ * without a quest (or a reference); the quest-only loot ids are read from gameobject_loot_template
+ * at startup, so a loot change needs a restart here too.
+ *
  * The addon switches it on or off with "XorWoW\tNODES;on" / "XorWoW\tNODES;off", whispered to
  * itself and swallowed here; the server forgets it at logout, so the addon sends it at every login.
  */
@@ -17,7 +23,9 @@
 #include "Chat.h"
 #include "DBCStores.h"
 #include "DataMap.h"
+#include "DatabaseEnv.h"
 #include "GameObject.h"
+#include "Log.h"
 #include "ObjectVisibilityContainer.h"
 #include "Player.h"
 #include "ScriptMgr.h"
@@ -42,9 +50,29 @@ namespace
         std::unordered_set<ObjectGuid> seen;   // the tracked nodes present at the previous check
     };
 
-    // The resource tracking a node's lock answers to: Find Herbs or Find Minerals, else nothing.
+    // Chest loot ids whose every item needs a quest; filled once at startup, read-only afterwards.
+    std::unordered_set<uint32> questOnlyLoot;
+
+    void LoadQuestOnlyLoot()
+    {
+        questOnlyLoot.clear();
+        if (QueryResult result = WorldDatabase.Query("SELECT Entry FROM gameobject_loot_template GROUP BY Entry "
+            "HAVING SUM(QuestRequired = 0 OR Reference <> 0) = 0"))
+        {
+            do
+                questOnlyLoot.insert((*result)[0].Get<uint32>());
+            while (result->NextRow());
+        }
+        LOG_INFO("server.loading", ">> XorWoW gathering alert: {} quest-only gameobject loot templates left out", questOnlyLoot.size());
+    }
+
+    // The resource tracking a node's lock answers to: Find Herbs or Find Minerals, else nothing
+    // (also nothing for a quest pickup).
     uint32 TrackingBitFor(GameObject const* go)
     {
+        if (questOnlyLoot.count(go->GetGOInfo()->GetLootId()))
+            return 0;
+
         uint32 lockId = go->GetGOInfo()->GetLockId();
         LockEntry const* lock = lockId ? sLockStore.LookupEntry(lockId) : nullptr;
         if (!lock)
@@ -144,7 +172,19 @@ public:
     }
 };
 
+class xorwow_gather_nodes_worldscript : public WorldScript
+{
+public:
+    xorwow_gather_nodes_worldscript() : WorldScript("xorwow_gather_nodes_worldscript", { WORLDHOOK_ON_STARTUP }) { }
+
+    void OnStartup() override
+    {
+        LoadQuestOnlyLoot();
+    }
+};
+
 void AddSC_xorwow_gather_nodes()
 {
     new xorwow_gather_nodes_playerscript();
+    new xorwow_gather_nodes_worldscript();
 }
