@@ -278,9 +278,30 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
     wstrToLower(wpacketPlayerName);
     wstrToLower(wpacketGuildName);
 
-    // XorWoW: "/who Name*" (a bot's name as the client shows it) matches the plain name
-    if (!wpacketPlayerName.empty() && wpacketPlayerName.back() == L'*')
+    // XorWoW: n-"Name *" or n-"Name @" (a bot's name as the client shows it) matches the plain name
+    if (!wpacketPlayerName.empty() && (wpacketPlayerName.back() == L'*' || wpacketPlayerName.back() == L'@'))
+    {
         wpacketPlayerName.pop_back();
+        while (!wpacketPlayerName.empty() && wpacketPlayerName.back() == L' ')
+            wpacketPlayerName.pop_back();
+    }
+
+    // XorWoW: bot filter words. "/who nobots" lists players only, "/who bots" bots only (random bots
+    // "*" and alts played by the bot AI "@"), "/who alts" the alts only; they combine with the other
+    // terms ("/who nobots 70-80"). The word is taken out, so it is not also matched as a name.
+    enum { WHO_ALL, WHO_NO_BOTS, WHO_BOTS, WHO_ALTS } botFilter = WHO_ALL;
+    for (uint32 i = 0; i < strCount; ++i)
+    {
+        if (str[i] == L"nobots")
+            botFilter = WHO_NO_BOTS;
+        else if (str[i] == L"bots")
+            botFilter = WHO_BOTS;
+        else if (str[i] == L"alts")
+            botFilter = WHO_ALTS;
+        else
+            continue;
+        str[i].clear();
+    }
 
     // client send in case not set max level value 100 but Acore supports 255 max level,
     // update it to show GMs with characters after 100 level
@@ -307,6 +328,12 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
         // check if target is globally visible for player
         if ((_player->GetGUID() != target.GetGuid() && !target.IsVisible()) &&
             (AccountMgr::IsPlayerAccount(_player->GetSession()->GetSecurity()) || target.GetSecurity() > _player->GetSession()->GetSecurity()))
+        {
+            continue;
+        }
+
+        if ((botFilter == WHO_NO_BOTS && target.GetBotMark()) || (botFilter == WHO_BOTS && !target.GetBotMark()) ||
+            (botFilter == WHO_ALTS && target.GetBotMark() != '@'))
         {
             continue;
         }

@@ -1232,6 +1232,11 @@ public:                                                 // opcodes handlers
         return _isBot;
     }
 
+    // XorWoW: the mark added after a bot's name for the other players' clients (see SendNameQueryOpcode):
+    // '*' for a bot, '@' for a player's alt played by the bot AI (set by mod-playerbots at login), 0 for players
+    [[nodiscard]] char GetBotNameMark() const { return _isBot ? _botNameMark : 0; }
+    void SetBotNameMark(char mark) { _botNameMark = mark; }
+
 private:
     void ProcessQueryCallbacks();
 
@@ -1349,6 +1354,7 @@ private:
     uint32 _orderCounter;
 
     bool _isBot;
+    char _botNameMark = '*';
 
     WorldSession(WorldSession const& right) = delete;
     WorldSession& operator=(WorldSession const& right) = delete;

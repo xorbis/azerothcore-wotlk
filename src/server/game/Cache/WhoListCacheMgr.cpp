@@ -47,10 +47,11 @@ void WhoListCacheMgr::Update()
 
         wstrToLower(widePlayerName);
 
-        // XorWoW: bots are listed as "Name*", like their name query (see SendNameQueryOpcode); the
-        // lowercase name used for the /who filters stays the plain one
-        if (player->GetSession()->IsBot())
-            playerName += '*';
+        // XorWoW: bots are listed as "Name *" or "Name @", like their name query (see SendNameQueryOpcode);
+        // the lowercase name used for the /who filters stays the plain one
+        char botMark = player->GetSession()->GetBotNameMark();
+        if (botMark)
+            playerName = playerName + ' ' + botMark;
 
         std::string guildName = sGuildMgr->GetGuildNameById(player->GetGuildId());
         std::wstring wideGuildName;
@@ -63,6 +64,6 @@ void WhoListCacheMgr::Update()
         _whoListStorage.emplace_back(player->GetGUID(), player->GetTeamId(), player->GetSession()->GetSecurity(), player->GetLevel(),
             player->getClass(), player->getRace(),
             (player->IsSpectator() ? AREA_DALARAN : player->GetZoneId()), player->getGender(), player->IsVisible(),
-            widePlayerName, wideGuildName, playerName, guildName);
+            widePlayerName, wideGuildName, playerName, guildName, botMark);
     }
 }
