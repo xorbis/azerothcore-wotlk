@@ -20,6 +20,7 @@
 void AddSC_xorwow_guild_bank_tab();   // ".guild buytab" - guild bank tabs at the realm's price
 void AddSC_xorwow_engineering_arrows();   // engineering bullet recipes make arrows too, ".ammo"
 void AddSC_xorwow_stable_slot();   // ".stable buyslot" - stable slots at the realm's price
+void AddSC_xorwow_gather_nodes();   // tells the XorWoW addon when a tracked herb or ore reaches the minimap
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -29,4 +30,5 @@ void AddCustomScripts()
     AddSC_xorwow_guild_bank_tab();
     AddSC_xorwow_engineering_arrows();
     AddSC_xorwow_stable_slot();
+    AddSC_xorwow_gather_nodes();
 }
