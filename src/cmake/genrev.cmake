@@ -24,6 +24,12 @@ if(WITHOUT_GIT)
   set(rev_branch "Archived")
   # No valid git commit date, use today
   string(TIMESTAMP rev_date_fallback "%Y-%m-%d %H:%M:%S" UTC)
+elseif(NOT "$ENV{AC_REV_HASH}" STREQUAL "")
+  # Revision handed in by the build (XorWoW's Docker build leaves the git repo out of the context)
+  set(rev_hash "$ENV{AC_REV_HASH}")
+  set(rev_date "$ENV{AC_REV_DATE}")
+  set(rev_branch "$ENV{AC_REV_BRANCH}")
+  set(rev_date_fallback "${rev_date}")
 else()
   # Workaround for not correctly detecting git
   if (NOT GIT_EXECUTABLE)

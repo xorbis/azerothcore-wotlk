@@ -80,17 +80,16 @@ COPY modules /azerothcore/modules
 
 ARG CACHEBUST=1
 
+# The git revision for revision.h (src/cmake/genrev.cmake), worked out on the host by
+# scripts\build-server.ps1: the 1.3 GB git repo stays out of the build context (.dockerignore)
+ARG AC_REV_HASH=
+ARG AC_REV_DATE=
+ARG AC_REV_BRANCH=
+
 WORKDIR /azerothcore/build
 
 RUN --mount=type=cache,target=/ccache,sharing=locked \
-    # This may seem silly (and it is), but AzerothCore wants the git repo at
-    # build time. The git repo is _huge_ and it's not something that really
-    # makes sense to mount into the container, but this way we can let the build
-    # have the information it needs without including the hundreds of megabytes
-    # of git repo into the container.
-    --mount=type=bind,target=/azerothcore/.git,source=.git \
-    git config --global --add safe.directory /azerothcore \
-    && cmake /azerothcore \
+    cmake /azerothcore \
        -G Ninja \
        -DCMAKE_INSTALL_PREFIX="/azerothcore/env/dist"  \
        -DAPPS_BUILD="all"                              \

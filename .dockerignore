@@ -12,3 +12,6 @@
 
 # do not ignore the ccache folder (used by the ci)
 !/var/docker/ccache
+
+# The git revision comes in as build args (scripts/build-server.ps1), the repo itself stays out
+/.git
