@@ -18,3 +18,7 @@
 	path = modules/mod-affinity
 	url = https://github.com/xorbis/mod-affinity.git
 	branch = main
+[submodule "modules/mod-ah-bot-plus"]
+	path = modules/mod-ah-bot-plus
+	url = https://github.com/xorbis/mod-ah-bot-plus.git
+	branch = xorwow
