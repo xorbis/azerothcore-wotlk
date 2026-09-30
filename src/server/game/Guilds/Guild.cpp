@@ -1866,10 +1866,17 @@ void Guild::SendBankLog(WorldSession* session, uint8 tabId) const
     }
 }
 
-void Guild::SendBankTabData(WorldSession* session, uint8 tabId, bool sendAllSlots) const
+void Guild::SendBankTabData(WorldSession* session, uint8 tabId, bool sendAllSlots)
 {
-    if (tabId < _GetPurchasedTabsSize())
-        _SendBankContent(session, tabId, sendAllSlots);
+    if (tabId >= _GetPurchasedTabsSize())
+        return;
+
+    // XorWoW: the client now holds the full state of this tab, so it can take partial updates again
+    if (sendAllSlots)
+        if (Member* member = GetMember(session->GetPlayer()->GetGUID()))
+            member->SubscribeToGuildBankUpdatePackets();
+
+    _SendBankContent(session, tabId, sendAllSlots);
 }
 
 void Guild::SendBankTabsInfo(WorldSession* session, bool sendAllSlots /*= false*/)
@@ -1895,10 +1902,10 @@ void Guild::SendPermissions(WorldSession* session)
     if (!member)
         return;
 
-    // We are unsubscribing here since it is the only reliable way to handle /reload from player as
-    // GuildPermissionsQuery is sent on each reload, and we don't want to send partial changes while client
-    // doesn't know the full state
-    member->UnsubscribeFromGuildBankUpdatePackets();
+    // XorWoW: no longer unsubscribing from bank updates here. The client sends this query while the bank is
+    // open too, which cut the viewer off from every later change (their own deposits and withdrawals
+    // included). A stale partial state after /reload cannot stick any more: CMSG_GUILD_BANK_QUERY_TAB
+    // always answers with the whole tab.
 
     uint8 rankId = member->GetRankId();
 

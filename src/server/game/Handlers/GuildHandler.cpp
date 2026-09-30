@@ -302,9 +302,12 @@ void WorldSession::HandleGuildBankQueryTab(WorldPackets::Guild::GuildBankQueryTa
     LOG_DEBUG("guild", "CMSG_GUILD_BANK_QUERY_TAB [{}]: Go: [{}], TabId: {}, ShowTabs: {}"
     , GetPlayerInfo(), packet.Banker.ToString(), packet.Tab, packet.FullUpdate);
 
+    // XorWoW: always send the whole tab. The client asks for a partial answer (FullUpdate = false) once it
+    // has a tab cached for the session and then trusts that cache, so any update it missed (bank closed,
+    // or not subscribed) stayed on screen until a relog.
     if (GetPlayer()->GetGameObjectIfCanInteractWith(packet.Banker, GAMEOBJECT_TYPE_GUILD_BANK))
         if (Guild* guild = GetPlayer()->GetGuild())
-            guild->SendBankTabData(this, packet.Tab, packet.FullUpdate);
+            guild->SendBankTabData(this, packet.Tab, true);
 }
 
 void WorldSession::HandleGuildBankDepositMoney(WorldPackets::Guild::GuildBankDepositMoney& packet)

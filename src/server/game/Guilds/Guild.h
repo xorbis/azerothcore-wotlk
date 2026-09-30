@@ -735,7 +735,7 @@ public:
     void SendEventLog(WorldSession* session) const;
     void SendBankLog(WorldSession* session, uint8 tabId) const;
     void SendBankTabsInfo(WorldSession* session, bool showTabs = false);
-    void SendBankTabData(WorldSession* session, uint8 tabId, bool sendAllSlots) const;
+    void SendBankTabData(WorldSession* session, uint8 tabId, bool sendAllSlots);
     void SendBankTabText(WorldSession* session, uint8 tabId) const;
     void SendPermissions(WorldSession* session);
     void SendMoneyInfo(WorldSession* session) const;
