@@ -22,6 +22,7 @@ void AddSC_xorwow_engineering_arrows();   // engineering bullet recipes make arr
 void AddSC_xorwow_stable_slot();   // ".stable buyslot" - stable slots at the realm's price
 void AddSC_xorwow_gather_nodes();   // tells the XorWoW addon when a tracked herb or ore reaches the minimap
 void AddSC_xorwow_expansion_lock();   // Outland and Northrend closed while the level cap is 60
+void AddSC_xorwow_radio();   // the song title for the XorWoW addon's radio button
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -33,4 +34,5 @@ void AddCustomScripts()
     AddSC_xorwow_stable_slot();
     AddSC_xorwow_gather_nodes();
     AddSC_xorwow_expansion_lock();
+    AddSC_xorwow_radio();
 }
