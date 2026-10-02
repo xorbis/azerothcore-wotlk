@@ -21,7 +21,7 @@
  * appears at the entrance (graveyards 1721/1722).
  *
  * The Guildstone (item 260001, 10 gold at every guild tabard vendor) casts Guild Hall
- * teleportation (spell 260001): the Hearthstone's 10 s cast, its own 30 min cooldown, landing at
+ * teleportation (spell 260001): the Hearthstone's 10 s cast, its own 15 min cooldown, landing at
  * the entrance - the arena's team start point (Alliance: team 1's, Horde: team 2's), clear of
  * anything placed in the hall.
  *
