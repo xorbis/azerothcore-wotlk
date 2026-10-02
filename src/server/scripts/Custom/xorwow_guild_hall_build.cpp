@@ -752,7 +752,8 @@ namespace
                 }
                 PlacedObject& stored = placed->second[moveObject];
                 DespawnEverywhere(stored);
-                stored.pos = dest;
+                // a moved object keeps the angle it was turned to (user, 2026-10-02)
+                stored.pos.Relocate(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
                 stored.scale = scale;
                 stored.mapId = player->GetMapId();
                 object = stored;
