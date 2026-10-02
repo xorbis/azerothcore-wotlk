@@ -110,6 +110,7 @@ namespace
         int32 destMap = -1;
         Position dest;
         bool enabled = true;
+        float rise = 0.0f;      // yards the object stands above where it is placed: models centred on their origin
     };
 
     struct PlacedObject
@@ -243,8 +244,13 @@ namespace
                 guids.push_back(npc->GetGUID());
             }
         }
-        else if (GameObject* go = SpawnGameObject(map, item.goEntry, object.pos, scale))
-            guids.push_back(go->GetGUID());
+        else
+        {
+            Position pos = object.pos;
+            pos.m_positionZ += item.rise * scale;
+            if (GameObject* go = SpawnGameObject(map, item.goEntry, pos, scale))
+                guids.push_back(go->GetGUID());
+        }
 
         if (!guids.empty() && item.focusEntry)
             if (GameObject* focus = SpawnGameObject(map, item.focusEntry, object.pos, 1.0f))
@@ -877,7 +883,7 @@ namespace
         std::lock_guard<std::mutex> guard(lock);
         catalog.clear();
         QueryResult result = WorldDatabase.Query("SELECT id, name, price, team, limit_group, max_count, go_entry, focus_entry, npc_entry, "
-            "dest_map, dest_x, dest_y, dest_z, dest_o, enabled FROM xorwow_guild_hall_catalog");
+            "dest_map, dest_x, dest_y, dest_z, dest_o, enabled, rise FROM xorwow_guild_hall_catalog");
         if (!result)
         {
             LOG_ERROR("server.loading", "XorWoW guild hall: world.xorwow_guild_hall_catalog is empty or missing - build mode has nothing to place.");
@@ -899,6 +905,7 @@ namespace
             item.destMap = f[9].Get<int32>();
             item.dest.Relocate(f[10].Get<float>(), f[11].Get<float>(), f[12].Get<float>(), f[13].Get<float>());
             item.enabled = f[14].Get<uint8>() != 0;
+            item.rise = f[15].Get<float>();
             if (item.goEntry && !sObjectMgr->GetGameObjectTemplate(item.goEntry))
                 LOG_ERROR("server.loading", "XorWoW guild hall: item {} ({}) has no gameobject_template {}", item.id, item.name, item.goEntry);
             if (item.npcEntry && !sObjectMgr->GetCreatureTemplate(item.npcEntry))

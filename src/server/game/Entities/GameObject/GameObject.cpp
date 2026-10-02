@@ -1562,9 +1562,13 @@ void GameObject::Use(Unit* user)
                 float x_lowest = GetPositionX();
                 float y_lowest = GetPositionY();
 
+                // XorWoW: Data5 = degrees the sitter is turned from the object's orientation, for a
+                // guild hall chair whose model faces off its X axis (0 on every stock chair)
+                float seatOrientation = Position::NormalizeOrientation(GetOrientation() + info->raw.data[5] * float(M_PI) / 180.0f);
+
                 // the object orientation + 1/2 pi
                 // every slot will be on that straight line
-                float orthogonalOrientation = GetOrientation() + M_PI * 0.5f;
+                float orthogonalOrientation = seatOrientation + M_PI * 0.5f;
                 // find nearest slot
                 bool found_free_slot = false;
                 for (ChairSlotAndUser::iterator itr = ChairListSlots.begin(); itr != ChairListSlots.end(); ++itr)
@@ -1608,7 +1612,7 @@ void GameObject::Use(Unit* user)
                     if (itr != ChairListSlots.end())
                     {
                         itr->second = player->GetGUID(); //this slot in now used by player
-                        player->TeleportTo(GetMapId(), x_lowest, y_lowest, GetPositionZ(), GetOrientation(), TELE_TO_NOT_LEAVE_TRANSPORT | TELE_TO_NOT_LEAVE_COMBAT | TELE_TO_NOT_UNSUMMON_PET);
+                        player->TeleportTo(GetMapId(), x_lowest, y_lowest, GetPositionZ(), seatOrientation, TELE_TO_NOT_LEAVE_TRANSPORT | TELE_TO_NOT_LEAVE_COMBAT | TELE_TO_NOT_UNSUMMON_PET);
                         player->SetStandState(UNIT_STAND_STATE_SIT_LOW_CHAIR + info->chair.height);
                         return;
                     }
