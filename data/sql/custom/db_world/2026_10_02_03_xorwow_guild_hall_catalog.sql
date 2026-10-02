@@ -750,7 +750,7 @@ INSERT INTO `gameobject_template_addon` (`entry`, `faction`, `flags`) VALUES
 DELETE FROM `creature_template` WHERE `entry` IN (260382, 260383, 260384, 260385);
 DELETE FROM `creature_template_model` WHERE `CreatureID` IN (260382, 260383, 260384, 260385);
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 2455;
-UPDATE `tmp_xorwow_npc` SET `entry` = 260382, `name` = 'Guild Banker', `subname` = 'Guild Hall', `AIName` = '', `ScriptName` = '';
+UPDATE `tmp_xorwow_npc` SET `entry` = 260382, `name` = 'Banker', `subname` = 'Guild Hall', `AIName` = '', `ScriptName` = '';
 INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
 DROP TEMPORARY TABLE `tmp_xorwow_npc`;
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template_model` WHERE `CreatureID` = 2455;
@@ -758,7 +758,7 @@ UPDATE `tmp_xorwow_npc` SET `CreatureID` = 260382;
 INSERT INTO `creature_template_model` SELECT * FROM `tmp_xorwow_npc`;
 DROP TEMPORARY TABLE `tmp_xorwow_npc`;
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 3309;
-UPDATE `tmp_xorwow_npc` SET `entry` = 260383, `name` = 'Guild Banker', `subname` = 'Guild Hall', `AIName` = '', `ScriptName` = '';
+UPDATE `tmp_xorwow_npc` SET `entry` = 260383, `name` = 'Banker', `subname` = 'Guild Hall', `AIName` = '', `ScriptName` = '';
 INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
 DROP TEMPORARY TABLE `tmp_xorwow_npc`;
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template_model` WHERE `CreatureID` = 3309;
