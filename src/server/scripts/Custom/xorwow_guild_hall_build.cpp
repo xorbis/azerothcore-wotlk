@@ -25,6 +25,7 @@
  *                                    shows a placed object: the cast needs that click, so the
  *                                    client sends no use request to tell which one it was)
  *   "GHB;FIND;<name>"                -> "SEL;..." for that object (Shift + right-click: remove)
+ *   "GHB;TURN;<degrees>;<name>"      turns that object where it stands (Shift + wheel over it)
  * and answers
  *   "GHB;STATE;<building>;<may edit>;<in own hall>;<guild bank copper>;<placed>;<limit>;<may tune>"
  *     may tune: the account is in XorWoW.GuildHall.PreviewTuners (worldserver.conf, comma list,
@@ -616,6 +617,88 @@ namespace
         return best;
     }
 
+    // Under the lock: the object turned where it stands. Tried and dropped (2026-10-02): turning the
+    // object in place (its parent rotation field: clients ignore it on a standing object) and sending
+    // it again (a client keeps its copy, old angle). So the turned one is a new object, spawned
+    // first; the old one then goes at once, without the despawn animation (its fade out was too
+    // slow). The new one's short fade in is the client's own. An NPC just turns.
+    void TurnEverywhere(PlacedObject const& object)
+    {
+        for (auto& [key, instance] : spawned)
+        {
+            if (instance.guildId != object.guildId)
+                continue;
+            auto it = instance.guids.find(object.id);
+            Map* map = it == instance.guids.end() ? nullptr : sMapMgr->FindMap(uint32(key >> 32), uint32(key & 0xFFFFFFFF));
+            if (!map)
+                continue;
+            std::vector<ObjectGuid> kept;
+            for (ObjectGuid const& guid : it->second)
+            {
+                if (!guid.IsGameObject())
+                {
+                    if (Creature* npc = map->GetCreature(guid))
+                    {
+                        npc->SetHomePosition(object.pos);
+                        npc->SetFacingTo(object.pos.GetOrientation());
+                    }
+                    kept.push_back(guid);
+                    continue;
+                }
+                GameObject* old = map->GetGameObject(guid);
+                if (!old)
+                    continue;
+                GameObject* turned = SpawnGameObject(map, old->GetEntry(), object.pos, old->GetObjectScale() / old->GetGOInfo()->size);
+                if (!turned)
+                {
+                    kept.push_back(guid);
+                    continue;
+                }
+                map->DoForAllPlayers([old](Player* player)
+                {
+                    if (player->HaveAtClient(old))
+                        old->DestroyForPlayer(player);
+                });
+                old->SetRespawnTime(0);
+                old->AddObjectToRemoveList();
+                instance.objectOf.erase(guid);
+                instance.objectOf[turned->GetGUID()] = object.id;
+                kept.push_back(turned->GetGUID());
+            }
+            it->second = std::move(kept);
+        }
+    }
+
+    // Shift + wheel over a placed object: turned where it stands and saved. World thread, no map
+    // update running.
+    void Turn(Player* player, int32 degrees, std::string_view name)
+    {
+        std::string refusal = BuildRefusal(player);
+        if (!refusal.empty())
+        {
+            SendError(player, refusal);
+            return;
+        }
+        std::optional<PlacedObject> found = ObjectByName(player, name);
+        if (!found)
+        {
+            SendError(player, "That is not one of your hall's objects.");
+            return;
+        }
+        PlacedObject object;
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            auto placed = objects.find(found->guildId);
+            if (placed == objects.end() || !placed->second.count(found->id))
+                return;
+            PlacedObject& stored = placed->second[found->id];
+            stored.pos.SetOrientation(Position::NormalizeOrientation(stored.pos.GetOrientation() + degrees * float(M_PI) / 180.0f));
+            object = stored;
+            TurnEverywhere(object);
+        }
+        CharacterDatabase.Execute("UPDATE xorwow_guild_hall_object SET o = {} WHERE id = {}", object.pos.GetOrientation(), object.id);
+    }
+
     // The addon's removal confirmation for this object (and its fallback pick-up).
     void SendSelection(Player* player, PlacedObject const& object)
     {
@@ -995,6 +1078,14 @@ public:
             }
             else
                 SendSelection(player, *object);
+        }
+        else if (rest.rfind(";TURN;", 0) == 0)
+        {
+            std::string_view args = rest.substr(6);
+            size_t sep = args.find(';');
+            std::optional<int32> degrees = sep == std::string_view::npos ? std::nullopt : Acore::StringTo<int32>(args.substr(0, sep));
+            if (degrees && *degrees >= -180 && *degrees <= 180)
+                Turn(player, *degrees, args.substr(sep + 1));
         }
         else if (rest.rfind(";REFUND;", 0) == 0)
         {
