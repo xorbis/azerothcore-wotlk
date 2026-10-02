@@ -25,7 +25,7 @@
  * the entrance - the arena's team start point (Alliance: team 1's, Horde: team 2's), clear of
  * anything placed in the hall.
  *
- * Who may edit the hall (prop placement, later) is a per-rank toggle: the guild master's rank
+ * Who may edit the hall (build mode, xorwow_guild_hall_build.cpp) is a per-rank toggle: the guild master's rank
  * always may, every other rank when its row is in characters.xorwow_guild_hall_rank. The client's
  * own rank rights cannot carry it - its Guild Control window maps its checkboxes to the 17 stock
  * rights through a fixed table and sends back only those - so the XorWoW addon adds an "Edit Guild
@@ -212,10 +212,38 @@ namespace
     }
 }
 
-// The guild master always may; other ranks by the toggle. For the prop placement to come.
+// The guild master always may; other ranks by the toggle.
 bool CanEditGuildHall(Player* player)
 {
     return player->GetGuildId() && (EditMask(player->GetGuildId()) & (1u << player->GetRank()));
+}
+
+// For the build mode (xorwow_guild_hall_build.cpp).
+bool IsGuildHallMap(uint32 mapId)
+{
+    return HallOfMap(mapId) != nullptr;
+}
+
+bool IsInOwnGuildHall(Player* player)
+{
+    return InOwnGuildHall(player);
+}
+
+// The guild whose hall this instance is; 0 = none (a guildless game master's).
+uint32 GuildOfHallInstance(uint32 mapId, uint32 instanceId)
+{
+    std::lock_guard<std::mutex> guard(lock);
+    for (auto const& [key, instance] : hallInstances)
+        if (instance == instanceId && uint32(key >> 32) == mapId)
+            return uint32(key & 0xFFFFFFFF);
+    return 0;
+}
+
+// Where the Guildstone lands: kept clear of anything placed.
+bool NearGuildHallEntrance(uint32 mapId, Position const& pos, float distance)
+{
+    Hall const* hall = HallOfMap(mapId);
+    return hall && hall->entrance.GetExactDist2d(&pos) < distance;
 }
 
 // Guild Hall teleportation (260001), the Guildstone's spell.

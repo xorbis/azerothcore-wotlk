@@ -20,6 +20,7 @@
 
 #include "Common.h"
 #include "G3D/Quat.h"
+#include <functional>
 #include "GameObjectData.h"
 #include "LootMgr.h"
 #include "Object.h"
@@ -119,6 +120,11 @@ enum LootState
 class GameObject : public WorldObject, public GridObject<GameObject>, public MovableMapObject, public UpdatableMapObject
 {
 public:
+    // XorWoW: a goober flagged GO_FLAG_INTERACT_COND is also usable by the players this says yes for,
+    // not only by those on its quest (guild hall build mode: furniture is clickable while building).
+    // Called while building update packets, on map threads: keep it cheap and lock-free of map state.
+    static std::function<bool(GameObject const*, Player const*)> XorWoWInteractCheck;
+
     explicit GameObject();
     ~GameObject() override;
 

@@ -724,6 +724,7 @@ public:
     void HandleRemoveLowestRank(WorldSession* session);
     void HandleMemberDepositMoney(WorldSession* session, uint32 amount);
     bool HandleMemberWithdrawMoney(WorldSession* session, uint32 amount, bool repair = false);
+    bool HandleGuildHallPayment(CharacterDatabaseTransaction trans, ObjectGuid playerGuid, uint32 amount, bool refund);   // XorWoW: guild hall build mode
     void HandleMemberLogout(WorldSession* session);
     void HandleDisband(WorldSession* session);
 

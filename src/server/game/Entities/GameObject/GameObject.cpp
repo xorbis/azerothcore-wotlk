@@ -1308,6 +1308,8 @@ void GameObject::Respawn()
     }
 }
 
+std::function<bool(GameObject const*, Player const*)> GameObject::XorWoWInteractCheck;
+
 bool GameObject::ActivateToQuest(Player* target) const
 {
     if (target->HasQuestForGO(GetEntry()))
@@ -2807,7 +2809,7 @@ void GameObject::BuildValuesUpdate(uint8 updateType, ByteBuffer* data, Player* t
                             if (sWorld->getBoolConfig(CONFIG_OBJECT_SPARKLES))
                                 dynFlags |= GO_DYNFLAG_LO_SPARKLE;
                         }
-                        else if (targetIsGM)
+                        else if (targetIsGM || (XorWoWInteractCheck && XorWoWInteractCheck(this, target)))
                             dynFlags |= GO_DYNFLAG_LO_ACTIVATE;
                         break;
                     case GAMEOBJECT_TYPE_SPELL_FOCUS:

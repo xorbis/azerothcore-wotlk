@@ -24,6 +24,7 @@ void AddSC_xorwow_gather_nodes();   // tells the XorWoW addon when a tracked her
 void AddSC_xorwow_expansion_lock();   // Outland and Northrend closed while the level cap is 60
 void AddSC_xorwow_radio();   // the song title for the XorWoW addon's radio button
 void AddSC_xorwow_guild_hall();   // the Guildstone's teleport, the "Edit Guild Hall" rank toggle
+void AddSC_xorwow_guild_hall_build();   // guild hall build mode: objects placed, moved and refunded
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -37,4 +38,5 @@ void AddCustomScripts()
     AddSC_xorwow_expansion_lock();
     AddSC_xorwow_radio();
     AddSC_xorwow_guild_hall();
+    AddSC_xorwow_guild_hall_build();
 }

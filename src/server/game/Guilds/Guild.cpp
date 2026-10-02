@@ -1736,6 +1736,22 @@ void Guild::HandleMemberDepositMoney(WorldSession* session, uint32 amount)
             session->GetAccountId(), player->GetGUID().GetCounter(), player->GetName(), session->GetRemoteAddress(), GetId(), GetName(), amount, GetMemberCount(), GetTotalBankMoney(), GetLeaderGUID().GetCounter(), player->GetLevel(), 3);
 }
 
+// XorWoW: what a guild hall object costs, from the guild bank (xorwow_guild_hall_build.cpp), or its
+// refund back into it. The bank's money log shows it as the member's own withdrawal or deposit; the
+// member's daily withdrawal allowance is left alone. The caller commits the transaction.
+bool Guild::HandleGuildHallPayment(CharacterDatabaseTransaction trans, ObjectGuid playerGuid, uint32 amount, bool refund)
+{
+    if (refund ? m_bankMoney > GUILD_BANK_MONEY_LIMIT - amount : m_bankMoney < amount)
+        return false;
+
+    _ModifyBankMoney(trans, amount, refund);
+    _LogBankEvent(trans, refund ? GUILD_BANK_LOG_DEPOSIT_MONEY : GUILD_BANK_LOG_WITHDRAW_MONEY, uint8(0), playerGuid, amount);
+
+    std::string aux = Acore::Impl::ByteArrayToHexStr(reinterpret_cast<uint8*>(&m_bankMoney), 8, true);
+    _BroadcastEvent(GE_BANK_MONEY_SET, ObjectGuid::Empty, aux.c_str());
+    return true;
+}
+
 bool Guild::HandleMemberWithdrawMoney(WorldSession* session, uint32 amount, bool repair)
 {
     //clamp amount to MAX_MONEY_AMOUNT, Players can't hold more than that anyway
