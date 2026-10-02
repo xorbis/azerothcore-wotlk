@@ -36,6 +36,7 @@
  * when the guild master adds a rank; a disbanded guild's rows go with it.
  */
 
+#include "CharacterCache.h"
 #include "Chat.h"
 #include "DataMap.h"
 #include "DatabaseEnv.h"
@@ -98,27 +99,39 @@ namespace
         return (uint64(mapId) << 32) | guildId;
     }
 
+    // The player's guild. At login the core loads the map before it sets the guild on the
+    // character, so a player logging in inside a hall would look guildless (and get a hall of
+    // their own): the character cache knows the guild from the start and follows every change.
+    uint32 GuildIdOf(Player* player)
+    {
+        if (uint32 guildId = player->GetGuildId())
+            return guildId;
+        return sCharacterCache->GetCharacterGuildIdByGuid(player->GetGUID());
+    }
+
     // The instance of the player's guild's hall on this map; 0 = none yet (or no guild).
     uint32 GuildInstance(uint32 mapId, Player* player)
     {
-        if (!player->GetGuildId())
+        uint32 guildId = GuildIdOf(player);
+        if (!guildId)
             return 0;
         std::lock_guard<std::mutex> guard(lock);
-        auto it = hallInstances.find(HallKey(mapId, player->GetGuildId()));
+        auto it = hallInstances.find(HallKey(mapId, guildId));
         return it == hallInstances.end() ? 0 : it->second;
     }
 
     void SetGuildInstance(uint32 mapId, Player* player, uint32 instanceId)
     {
-        if (!player->GetGuildId())
+        uint32 guildId = GuildIdOf(player);
+        if (!guildId)
             return;   // a game master without a guild: a hall of their own, forgotten
         std::lock_guard<std::mutex> guard(lock);
-        hallInstances[HallKey(mapId, player->GetGuildId())] = instanceId;
+        hallInstances[HallKey(mapId, guildId)] = instanceId;
     }
 
     bool InOwnGuildHall(Player* player)
     {
-        return HallOfMap(player->GetMapId()) && player->GetGuildId()
+        return HallOfMap(player->GetMapId()) && GuildIdOf(player)
             && GuildInstance(player->GetMapId(), player) == player->GetInstanceId();
     }
 
@@ -276,7 +289,7 @@ public:
         Hall const* hall = HallOfMap(entry->MapID);
         if (!hall)
             return true;
-        return player->GetGuildId() && hall == &HallOfTeam(player->GetTeamId());
+        return GuildIdOf(player) && hall == &HallOfTeam(player->GetTeamId());
     }
 
     void OnPlayerUpdate(Player* player, uint32 diff) override
