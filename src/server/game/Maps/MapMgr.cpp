@@ -220,6 +220,17 @@ Map::EnterState MapMgr::PlayerCannotEnter(uint32 mapid, Player* player, bool log
     }
 
     // if map exists - check for being full, etc.
+    // XorWoW: a scripted instance map (guild hall) - the instance its script picks, no hourly limit
+    if (ScriptedInstanceMap const* scripted = GetScriptedInstanceMap(mapid))
+    {
+        if (!loginCheck)
+            if (uint32 instanceId = scripted->Pick(player))
+                if (Map* boundMap = FindMap(mapid, instanceId))
+                    if (Map::EnterState denyReason = boundMap->CannotEnter(player, loginCheck))
+                        return denyReason;
+        return Map::CAN_ENTER;
+    }
+
     if (!loginCheck) // for login this is done by the calling function
     {
         uint32 destInstId = sInstanceSaveMgr->PlayerGetDestinationInstanceId(player, mapid, targetDifficulty);

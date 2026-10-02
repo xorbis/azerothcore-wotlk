@@ -2401,7 +2401,9 @@ void Group::ResetInstances(uint8 method, bool isRaid, Player* leader)
 
 void Group::_homebindIfInstance(Player* player)
 {
-    if (player && !player->IsGameMaster() && player->FindMap() && sMapStore.LookupEntry(player->GetMapId())->IsDungeon())
+    // XorWoW: not in a scripted instance map (guild hall), whose instance is the guild's, not the group's
+    if (player && !player->IsGameMaster() && player->FindMap() && sMapStore.LookupEntry(player->GetMapId())->IsDungeon()
+        && !sMapMgr->GetScriptedInstanceMap(player->GetMapId()))
         player->m_InstanceValid = false;
 }
 

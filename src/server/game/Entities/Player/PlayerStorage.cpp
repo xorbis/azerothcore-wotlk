@@ -7172,7 +7172,8 @@ bool Player::CheckInstanceLoginValid()
     else
     {
         // cannot be in normal instance without a group and more players than 1 in instance
-        if (!GetGroup() && GetMap()->GetPlayersCountExceptGMs() > 1)
+        // (XorWoW: except a scripted instance map - a guild hall is shared by the guild, groups aside)
+        if (!GetGroup() && GetMap()->GetPlayersCountExceptGMs() > 1 && !sMapMgr->GetScriptedInstanceMap(GetMapId()))
             return false;
     }
 

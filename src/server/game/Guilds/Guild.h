@@ -790,6 +790,7 @@ public:
 
     [[nodiscard]] bool ModifyBankMoney(CharacterDatabaseTransaction trans, uint64 const& amount, bool add) { return _ModifyBankMoney(trans, amount, add); }
     [[nodiscard]] uint32 GetMemberSize() const { return m_members.size(); }
+    [[nodiscard]] uint8 GetRankCount() const { return _GetRanksSize(); }   // XorWoW: guild hall rank toggles
 
     bool MemberHasTabRights(ObjectGuid guid, uint8 tabId, uint32 rights) const;
     bool HasRankRight(Player* player, uint32 right) const;

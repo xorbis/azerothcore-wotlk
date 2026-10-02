@@ -205,7 +205,7 @@ void Player::ResetInstances(ObjectGuid guid, uint8 method, bool isRaid)
             {
                 InstanceSave* instanceSave = itr->second.save;
                 MapEntry const* entry = sMapStore.LookupEntry(itr->first);
-                if (!entry || entry->IsRaid() || !instanceSave->CanReset())
+                if (!entry || entry->IsRaid() || !instanceSave->CanReset() || sMapMgr->GetScriptedInstanceMap(itr->first))   // XorWoW: guild halls never reset
                 {
                     continue;
                 }

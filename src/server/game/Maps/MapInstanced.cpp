@@ -135,6 +135,18 @@ Map* MapInstanced::CreateInstanceForPlayer(const uint32 mapId, Player* player)
             }
         }
     }
+    else if (MapMgr::ScriptedInstanceMap const* scripted = sMapMgr->GetScriptedInstanceMap(mapId))
+    {
+        // XorWoW: the script picks the instance (guild halls: the player's guild's), binds aside
+        if (uint32 instanceId = scripted->Pick(player))
+            map = FindInstanceMap(instanceId);
+        if (!map)
+        {
+            uint32 newInstanceId = sMapMgr->GenerateInstanceId();
+            map = CreateInstance(newInstanceId, nullptr, REGULAR_DIFFICULTY, player);
+            scripted->Created(player, newInstanceId);
+        }
+    }
     else
     {
         Difficulty realdiff = player->GetDifficulty(IsRaid());

@@ -30,6 +30,7 @@
 #include "LFGMgr.h"
 #include "MapGrid.h"
 #include "MapInstanced.h"
+#include "MapMgr.h"
 #include "Metric.h"
 #include "MiscPackets.h"
 #include "Object.h"
@@ -1281,6 +1282,11 @@ bool Map::GetAreaInfo(uint32 phaseMask, float x, float y, float z, uint32& flags
 
 uint32 Map::GetAreaId(uint32 phaseMask, float x, float y, float z) const
 {
+    // XorWoW: a scripted instance map (guild hall) is one area throughout
+    if (MapMgr::ScriptedInstanceMap const* scripted = sMapMgr->GetScriptedInstanceMap(GetId()))
+        if (scripted->AreaId)
+            return scripted->AreaId;
+
     uint32 mogpFlags;
     int32 adtId, rootId, groupId;
     float vmapZ = z;
@@ -1491,6 +1497,15 @@ void Map::GetFullTerrainStatusForPosition(uint32 phaseMask, float x, float y, fl
 
     if (!data.areaId)
         data.areaId = i_mapEntry->linked_zone;
+
+    // XorWoW: a scripted instance map (guild hall) is one area throughout, indoors or out as that area says
+    if (MapMgr::ScriptedInstanceMap const* scripted = sMapMgr->GetScriptedInstanceMap(GetId()))
+        if (scripted->AreaId)
+        {
+            data.areaId = scripted->AreaId;
+            if (AreaTableEntry const* hallArea = sAreaTableStore.LookupEntry(data.areaId))
+                data.outdoors = (hallArea->flags & (AREA_FLAG_INSIDE | AREA_FLAG_OUTSIDE)) != AREA_FLAG_INSIDE;
+        }
 
     AreaTableEntry const* areaEntry = sAreaTableStore.LookupEntry(data.areaId);
 
@@ -2047,8 +2062,9 @@ Map::EnterState InstanceMap::CannotEnter(Player* player, bool loginCheck)
             }
 
     // cannot enter if instance is in use by another party/soloer that have a permanent save in the same instance id
+    // (XorWoW: not a scripted instance map - a guild hall is shared by the guild, groups aside)
     PlayerList const& playerList = GetPlayers();
-    if (!playerList.IsEmpty())
+    if (!playerList.IsEmpty() && !sMapMgr->GetScriptedInstanceMap(GetId()))
         for (PlayerList::const_iterator i = playerList.begin(); i != playerList.end(); ++i)
             if (Player* iPlayer = i->GetSource())
             {
@@ -2095,7 +2111,11 @@ bool InstanceMap::AddPlayerToMap(Player* player)
 
         // check for existing instance binds
         InstancePlayerBind* playerBind = sInstanceSaveMgr->PlayerGetBoundInstance(player->GetGUID(), GetId(), Difficulty(GetSpawnMode()));
-        if (playerBind && playerBind->perm)
+        // XorWoW: the script chose this instance (guild hall): a temporary bind to it, nothing else
+        bool const scripted = sMapMgr->GetScriptedInstanceMap(GetId()) != nullptr;
+        if (scripted)
+            playerBind = sInstanceSaveMgr->PlayerBindToInstance(player->GetGUID(), mapSave, false, player);
+        else if (playerBind && playerBind->perm)
         {
             if (playerBind->save != mapSave)
             {
@@ -2125,10 +2145,10 @@ bool InstanceMap::AddPlayerToMap(Player* player)
 
         // increase current instances (hourly limit)
         // xinef: specific instances are still limited
-        if (!group || !group->isLFGGroup() || !group->IsLfgRandomInstance())
+        if (!scripted && (!group || !group->isLFGGroup() || !group->IsLfgRandomInstance()))
             player->AddInstanceEnterTime(GetInstanceId(), GameTime::GetGameTime().count());
 
-        if (!playerBind->perm && !mapSave->CanReset() && group && !group->isLFGGroup() && !group->IsLfgRandomInstance())
+        if (!scripted && !playerBind->perm && !mapSave->CanReset() && group && !group->isLFGGroup() && !group->IsLfgRandomInstance())
         {
             WorldPacket data(SMSG_INSTANCE_LOCK_WARNING_QUERY, 9);
             data << uint32(60000);

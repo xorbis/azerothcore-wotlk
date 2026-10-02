@@ -25,6 +25,7 @@
 #include "MapUpdater.h"
 #include "Object.h"
 #include "Timer.h"
+#include <functional>
 
 class Transport;
 class StaticTransport;
@@ -150,6 +151,22 @@ public:
     void RegisterInstanceId(uint32 instanceId);
     uint32 GenerateInstanceId();
 
+    // XorWoW: dungeon maps whose instance a script picks instead of the bind rules (the guild halls,
+    // one instance per guild). Such a map has no hourly instance limit, no instance reset and no lock
+    // warning, and AreaId (when set) is the area of every point of it.
+    struct ScriptedInstanceMap
+    {
+        std::function<uint32(Player*)> Pick;                 // the instance to put the player in, 0 = a new one
+        std::function<void(Player*, uint32)> Created;        // the new instance's id
+        uint32 AreaId = 0;
+    };
+    void SetScriptedInstanceMap(uint32 mapId, ScriptedInstanceMap map) { _scriptedInstanceMaps[mapId] = std::move(map); }   // at startup only
+    ScriptedInstanceMap const* GetScriptedInstanceMap(uint32 mapId) const
+    {
+        auto it = _scriptedInstanceMaps.find(mapId);
+        return it != _scriptedInstanceMaps.end() ? &it->second : nullptr;
+    }
+
     MapUpdater* GetMapUpdater() { return &m_updater; }
 
     template<typename Worker>
@@ -176,6 +193,7 @@ private:
     InstanceIds _instanceIds;
     uint32 _nextInstanceId;
     MapUpdater m_updater;
+    std::unordered_map<uint32, ScriptedInstanceMap> _scriptedInstanceMaps;
 };
 
 template<typename Worker>
