@@ -2863,8 +2863,20 @@ void Player::SendInitialSpells()
 
         data << uint32(itr->first);
 
-        data << uint16(itr->second.itemid);                 // cast item id
-        data << uint16(itr->second.category);               // spell category
+        // XorWoW: the cast item id is only 16 bits here, so a custom item past 65535 (the Guildstone,
+        // 260001) came out as another item and lost its cooldown at every loading screen, which
+        // replaces the client's cooldown list. Such an item's cooldown goes out without the item, as
+        // its spell's category cooldown: the client matches that by the category the item names.
+        uint32 itemId = itr->second.itemid;
+        uint32 category = itr->second.category;
+        if (itemId > 0xFFFF)
+        {
+            itemId = 0;
+            category = sEntry->GetCategory();
+        }
+
+        data << uint16(itemId);                             // cast item id
+        data << uint16(category);                           // spell category
 
         // send infinity cooldown in special format
         if (itr->second.end >= infTime)
@@ -2875,8 +2887,8 @@ void Player::SendInitialSpells()
         }
 
         uint32 cooldown = itr->second.end > curTime ? itr->second.end - curTime : 0;
-        data << uint32(itr->second.category ? 0 : cooldown);    // cooldown
-        data << uint32(itr->second.category ? cooldown : 0);    // category cooldown
+        data << uint32(category ? 0 : cooldown);            // cooldown
+        data << uint32(category ? cooldown : 0);            // category cooldown
     }
 
     SendDirectMessage(&data);
