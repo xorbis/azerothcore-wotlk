@@ -560,6 +560,8 @@ namespace lfg
         void SendRaidBrowserCachedList(Player* player, uint32 dungeonId);
         void UpdateRaidBrowser(uint32 diff);
         void LfrSetComment(Player* p, std::string comment);
+        /// XorWoW: raids this player is listed for in the Raid Browser (read by mod-playerbots)
+        LfgDungeonSet GetRaidBrowserDungeons(ObjectGuid guid, TeamId teamId) const;
         void SendRaidBrowserJoinedPacket(Player* p, LfgDungeonSet& dungeons, std::string comment);
         void RBPacketAppendGroup(RBInternalInfo const& info, ByteBuffer& buffer);
         void RBPacketAppendPlayer(RBInternalInfo const& info, ByteBuffer& buffer);

@@ -2642,6 +2642,15 @@ namespace lfg
                 iter->second.comment = comment;
     }
 
+    LfgDungeonSet LFGMgr::GetRaidBrowserDungeons(ObjectGuid guid, TeamId teamId) const
+    {
+        LfgDungeonSet dungeons;
+        for (auto const& [dungeonId, entries] : RaidBrowserStore[teamId])
+            if (entries.find(guid) != entries.end())
+                dungeons.insert(dungeonId);
+        return dungeons;
+    }
+
     void LFGMgr::SetSelectedDungeons(ObjectGuid guid, LfgDungeonSet const& dungeons)
     {
         LOG_DEBUG("lfg", "LFGMgr::SetLockedDungeons: [{}]", guid.ToString());
