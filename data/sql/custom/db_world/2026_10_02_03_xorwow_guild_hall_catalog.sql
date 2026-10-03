@@ -305,8 +305,8 @@ INSERT INTO `gameobject_template` (`entry`, `type`, `displayId`, `name`, `size`,
 (260007, 7, 91, 'High-back Chair', 1, 1, 1, 0, 0, ''),
 (260008, 7, 2087, 'Stone Chair', 1, 1, 1, 270, 0, ''),
 (260009, 7, 260009, 'Garden Bench', 1, 2, 1, 0, 0, ''),
-(260010, 7, 260010, 'Stone Garden Bench', 1, 2, 1, 0, 0, ''),
-(260011, 7, 260011, 'Ornate Garden Bench', 1, 2, 1, 0, 0, ''),
+(260010, 7, 260010, 'Stone Garden Bench', 1, 1, 1, 0, 0, ''),
+(260011, 7, 260011, 'Ornate Garden Bench', 1, 1, 1, 0, 0, ''),
 (260012, 7, 8205, 'Dalaran Chair', 1, 1, 1, 0, 0, ''),
 (260013, 7, 8204, 'Dalaran Armchair', 1, 1, 1, 0, 0, ''),
 (260014, 7, 8096, 'Dalaran Bench', 1, 2, 1, 0, 0, ''),
@@ -777,7 +777,7 @@ UPDATE `tmp_xorwow_npc` SET `CreatureID` = 260383;
 INSERT INTO `creature_template_model` SELECT * FROM `tmp_xorwow_npc`;
 DROP TEMPORARY TABLE `tmp_xorwow_npc`;
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 8670;
-UPDATE `tmp_xorwow_npc` SET `entry` = 260384, `name` = 'Guild Auctioneer', `subname` = 'Guild Hall', `AIName` = '', `ScriptName` = '';
+UPDATE `tmp_xorwow_npc` SET `entry` = 260384, `name` = 'Auctioneer', `subname` = 'Guild Hall', `AIName` = '', `ScriptName` = '';
 INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
 DROP TEMPORARY TABLE `tmp_xorwow_npc`;
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template_model` WHERE `CreatureID` = 8670;
@@ -785,7 +785,7 @@ UPDATE `tmp_xorwow_npc` SET `CreatureID` = 260384;
 INSERT INTO `creature_template_model` SELECT * FROM `tmp_xorwow_npc`;
 DROP TEMPORARY TABLE `tmp_xorwow_npc`;
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 9856;
-UPDATE `tmp_xorwow_npc` SET `entry` = 260385, `name` = 'Guild Auctioneer', `subname` = 'Guild Hall', `AIName` = '', `ScriptName` = '';
+UPDATE `tmp_xorwow_npc` SET `entry` = 260385, `name` = 'Auctioneer', `subname` = 'Guild Hall', `AIName` = '', `ScriptName` = '';
 INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
 DROP TEMPORARY TABLE `tmp_xorwow_npc`;
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template_model` WHERE `CreatureID` = 9856;
