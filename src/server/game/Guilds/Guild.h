@@ -697,6 +697,7 @@ public:
     ObjectGuid GetLeaderGUID() const { return m_leaderGuid; }
     std::string const& GetName() const { return m_name; }
     std::string const& GetMOTD() const { return m_motd; }
+    EmblemInfo const& GetEmblemInfo() const { return m_emblemInfo; }   // XorWoW: guild hall banners
     std::string const& GetInfo() const { return m_info; }
 
     bool SetName(std::string_view const& name);

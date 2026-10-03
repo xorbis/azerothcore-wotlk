@@ -26,6 +26,9 @@
  *                                    client sends no use request to tell which one it was)
  *   "GHB;FIND;<name>"                -> "SEL;..." for that object (Shift + right-click: remove)
  *   "GHB;TURN;<degrees>;<name>"      turns that object where it stands (Shift + wheel over it)
+ *   "GHB;EMBLEM?"                    -> "EMBLEM;<guild id>;<style>;<color>;<border>;<border color>;<background>",
+ *                                    "EMBLEM;0" outside a guild: the addon keeps it for the launcher,
+ *                                    which paints the guild banners' textures from it (Core\GuildBanners.cs)
  * and answers
  *   "GHB;STATE;<building>;<may edit>;<in own hall>;<guild bank copper>;<placed>;<limit>;<may tune>"
  *     may tune: the account is in XorWoW.GuildHall.PreviewTuners (worldserver.conf, comma list,
@@ -93,6 +96,7 @@ namespace
     constexpr uint32 HALL_OBJECT_LIMIT = 400;   // per guild: what one instance spawns at its first visit
     constexpr float ENTRANCE_CLEARANCE = 4.0f;  // yards kept free around the Guildstone's landing spot
     constexpr uint32 SELECT_REPEAT_MS = 500;    // one right-click sends several requests
+    constexpr uint32 GUILD_BANNER_SLOTS = 999;  // guild banner displays per model (client-patch/patch.json guild_banners)
 
     enum CatalogTeam : uint8 { CATALOG_BOTH = 0, CATALOG_ALLIANCE = 1, CATALOG_HORDE = 2 };
 
@@ -111,6 +115,7 @@ namespace
         Position dest;
         bool enabled = true;
         float rise = 0.0f;      // yards the object stands above where it is placed: models centred on their origin
+        uint32 guildDisplay = 0; // guild banners: the guild's own display is this + its guild id
     };
 
     struct PlacedObject
@@ -204,7 +209,8 @@ namespace
     // ---------------------------------------------------------------------------------------------
     // Spawning: temporary objects in the instance, nothing saved as a world spawn.
 
-    GameObject* SpawnGameObject(Map* map, uint32 entry, Position const& pos, float scale)
+    // displayId: 0 = the template's
+    GameObject* SpawnGameObject(Map* map, uint32 entry, Position const& pos, float scale, uint32 displayId = 0)
     {
         GameObjectTemplate const* info = sObjectMgr->GetGameObjectTemplate(entry);
         if (!info)
@@ -219,6 +225,8 @@ namespace
             return nullptr;
         }
         go->SetObjectScale(info->size * scale);
+        if (displayId)
+            go->SetDisplayId(displayId);
         go->SetRespawnTime(0);
         go->SetSpawnedByDefault(false);
         if (!map->AddToMap(go))
@@ -248,7 +256,9 @@ namespace
         {
             Position pos = object.pos;
             pos.m_positionZ += item.rise * scale;
-            if (GameObject* go = SpawnGameObject(map, item.goEntry, pos, scale))
+            // a guild banner: the guild's tabard, its client-side textures painted by the launcher
+            uint32 displayId = item.guildDisplay && object.guildId <= GUILD_BANNER_SLOTS ? item.guildDisplay + object.guildId : 0;
+            if (GameObject* go = SpawnGameObject(map, item.goEntry, pos, scale, displayId))
                 guids.push_back(go->GetGUID());
         }
 
@@ -384,6 +394,20 @@ namespace
         std::lock_guard<std::mutex> guard(lock);
         tuners[accountId] = allowed;
         return allowed;
+    }
+
+    // The guild's tabard design, for the launcher's guild banner textures (by way of the addon).
+    void SendEmblem(Player* player)
+    {
+        Guild* guild = player->GetGuild();
+        if (!guild)
+        {
+            SendToAddon(player, "EMBLEM;0");
+            return;
+        }
+        EmblemInfo const& emblem = guild->GetEmblemInfo();
+        SendToAddon(player, Acore::StringFormat("EMBLEM;{};{};{};{};{};{}", guild->GetId(), emblem.GetStyle(), emblem.GetColor(),
+            emblem.GetBorderStyle(), emblem.GetBorderColor(), emblem.GetBackgroundColor()));
     }
 
     void SendState(Player* player)
@@ -654,7 +678,7 @@ namespace
                 GameObject* old = map->GetGameObject(guid);
                 if (!old)
                     continue;
-                GameObject* turned = SpawnGameObject(map, old->GetEntry(), object.pos, old->GetObjectScale() / old->GetGOInfo()->size);
+                GameObject* turned = SpawnGameObject(map, old->GetEntry(), object.pos, old->GetObjectScale() / old->GetGOInfo()->size, old->GetDisplayId());
                 if (!turned)
                 {
                     kept.push_back(guid);
@@ -787,6 +811,11 @@ namespace
                 SendError(player, "That is for the other faction's halls.");
                 return;
             }
+            if (item.guildDisplay && guildId > GUILD_BANNER_SLOTS)
+            {
+                SendError(player, "Guild banners are not available to your guild.");
+                return;
+            }
             if (PlacedCount(guildId) >= HALL_OBJECT_LIMIT)
             {
                 SendError(player, Acore::StringFormat("The hall is full: {} objects at most.", HALL_OBJECT_LIMIT));
@@ -883,7 +912,7 @@ namespace
         std::lock_guard<std::mutex> guard(lock);
         catalog.clear();
         QueryResult result = WorldDatabase.Query("SELECT id, name, price, team, limit_group, max_count, go_entry, focus_entry, npc_entry, "
-            "dest_map, dest_x, dest_y, dest_z, dest_o, enabled, rise FROM xorwow_guild_hall_catalog");
+            "dest_map, dest_x, dest_y, dest_z, dest_o, enabled, rise, guild_display FROM xorwow_guild_hall_catalog");
         if (!result)
         {
             LOG_ERROR("server.loading", "XorWoW guild hall: world.xorwow_guild_hall_catalog is empty or missing - build mode has nothing to place.");
@@ -906,6 +935,7 @@ namespace
             item.dest.Relocate(f[10].Get<float>(), f[11].Get<float>(), f[12].Get<float>(), f[13].Get<float>());
             item.enabled = f[14].Get<uint8>() != 0;
             item.rise = f[15].Get<float>();
+            item.guildDisplay = f[16].Get<uint32>();
             if (item.goEntry && !sObjectMgr->GetGameObjectTemplate(item.goEntry))
                 LOG_ERROR("server.loading", "XorWoW guild hall: item {} ({}) has no gameobject_template {}", item.id, item.name, item.goEntry);
             if (item.npcEntry && !sObjectMgr->GetCreatureTemplate(item.npcEntry))
@@ -1058,6 +1088,8 @@ public:
             SendState(player);
             SendCounts(player);
         }
+        else if (rest == ";EMBLEM?")
+            SendEmblem(player);
         else if (rest == ";ON")
             EnterBuildMode(player);
         else if (rest == ";OFF")
