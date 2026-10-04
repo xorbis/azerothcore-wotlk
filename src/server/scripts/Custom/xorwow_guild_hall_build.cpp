@@ -654,6 +654,12 @@ namespace
     // slow). The new one's short fade in is the client's own. An NPC just turns.
     void TurnEverywhere(PlacedObject const& object)
     {
+        // the object stands its rise above its spot, as SpawnObject puts it; a crafting station's
+        // focus stays on the spot
+        CatalogItem const* item = FindItem(object.item);
+        Position raised = object.pos;
+        if (item)
+            raised.m_positionZ += item->rise * object.scale / 100.0f;
         for (auto& [key, instance] : spawned)
         {
             if (instance.guildId != object.guildId)
@@ -678,7 +684,8 @@ namespace
                 GameObject* old = map->GetGameObject(guid);
                 if (!old)
                     continue;
-                GameObject* turned = SpawnGameObject(map, old->GetEntry(), object.pos, old->GetObjectScale() / old->GetGOInfo()->size, old->GetDisplayId());
+                bool focus = item && item->focusEntry && old->GetEntry() == item->focusEntry;
+                GameObject* turned = SpawnGameObject(map, old->GetEntry(), focus ? object.pos : raised,old->GetObjectScale() / old->GetGOInfo()->size, old->GetDisplayId());
                 if (!turned)
                 {
                     kept.push_back(guid);
