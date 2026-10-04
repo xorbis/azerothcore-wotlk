@@ -631,7 +631,9 @@ namespace
             CatalogItem const* item = FindItem(object.item);
             if (!item || object.mapId != player->GetMapId())
                 continue;
-            if (!StringEqualI(item->name, name) && !StringEqualI("Guild " + item->name, name))
+            // the tooltip shows a service NPC's own name ("Dancer" for every dancer race)
+            CreatureTemplate const* npc = item->npcEntry ? sObjectMgr->GetCreatureTemplate(item->npcEntry) : nullptr;
+            if (!StringEqualI(item->name, name) && !StringEqualI("Guild " + item->name, name) && !(npc && StringEqualI(npc->Name, name)))
                 continue;
             float distance = player->GetExactDist2d(&object.pos);
             float off = std::fabs(Position::NormalizeOrientation(player->GetAngle(&object.pos) - player->GetOrientation()));
