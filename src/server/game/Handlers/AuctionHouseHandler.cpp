@@ -278,15 +278,8 @@ void WorldSession::HandleAuctionSellItem(WorldPacket& recvData)
             AH->houseId = AuctionHouseId::Neutral;
         else
         {
-            CreatureData const* auctioneerData = sObjectMgr->GetCreatureData(creature->GetSpawnId());
-            if (!auctioneerData)
-            {
-                LOG_ERROR("network.opcode", "Data for auctioneer not found ({})", auctioneer.ToString());
-                delete AH;
-                return;
-            }
-
-            CreatureTemplate const* auctioneerInfo = sObjectMgr->GetCreatureTemplate(auctioneerData->id);
+            // XorWoW: the template, not the spawn data - guild hall auctioneers are temporary spawns
+            CreatureTemplate const* auctioneerInfo = creature->GetCreatureTemplate();
             if (!auctioneerInfo)
             {
                 LOG_ERROR("network.opcode", "Non existing auctioneer ({})", auctioneer.ToString());
