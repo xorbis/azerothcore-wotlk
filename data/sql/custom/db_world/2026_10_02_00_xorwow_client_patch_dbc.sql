@@ -3138,3 +3138,11 @@ INSERT INTO `gameobjectdisplayinfo_dbc` (`ID`, `ModelName`, `Sound_1`, `Sound_2`
 (264997, 'World\\XorWoW\\GuildBanners\\GuildStandard_0997.mdx', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -0.5918, -1.3615, 0.0, 0.5843, 1.3778, 6.087, 0),
 (264998, 'World\\XorWoW\\GuildBanners\\GuildStandard_0998.mdx', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -0.5918, -1.3615, 0.0, 0.5843, 1.3778, 6.087, 0),
 (264999, 'World\\XorWoW\\GuildBanners\\GuildStandard_0999.mdx', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -0.5918, -1.3615, 0.0, 0.5843, 1.3778, 6.087, 0);
+
+DELETE FROM `creaturedisplayinfo_dbc` WHERE `ID` IN (260396);
+INSERT INTO `creaturedisplayinfo_dbc` (`ID`, `ModelID`, `SoundID`, `ExtendedDisplayInfoID`, `CreatureModelScale`, `CreatureModelAlpha`, `TextureVariation_1`, `TextureVariation_2`, `TextureVariation_3`, `PortraitTextureName`, `BloodLevel`, `BloodID`, `NPCSoundID`, `ParticleColorID`, `CreatureGeosetData`, `ObjectEffectPackageID`) VALUES
+(260396, 2209, 0, 260396, 1.0, 255, '', '', '', '', 0, 0, 151, 0, 0, 0);
+
+DELETE FROM `creaturedisplayinfoextra_dbc` WHERE `ID` IN (260396);
+INSERT INTO `creaturedisplayinfoextra_dbc` (`ID`, `DisplayRaceID`, `DisplaySexID`, `SkinID`, `FaceID`, `HairStyleID`, `HairColorID`, `FacialHairID`, `NPCItemDisplay1`, `NPCItemDisplay2`, `NPCItemDisplay3`, `NPCItemDisplay4`, `NPCItemDisplay5`, `NPCItemDisplay6`, `NPCItemDisplay7`, `NPCItemDisplay8`, `NPCItemDisplay9`, `NPCItemDisplay10`, `NPCItemDisplay11`, `Flags`, `BakeName`) VALUES
+(260396, 10, 1, 13, 0, 11, 0, 0, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, '');
