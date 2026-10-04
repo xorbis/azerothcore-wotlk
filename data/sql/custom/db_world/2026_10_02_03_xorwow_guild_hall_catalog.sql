@@ -179,7 +179,6 @@ INSERT INTO `xorwow_guild_hall_catalog` VALUES
 (209, 6, 'Globe of Scrying', 150000, 0, '', 0, 260209, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0),
 (210, 6, 'Dalaran Aquarium', 750000, 0, '', 0, 260210, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0),
 (211, 6, 'Dance Pole', 100000, 0, '', 0, 260211, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0),
-(396, 6, 'Dancer', 250000, 2, '', 0, 0, 0, 260396, -1, 0, 0, 0, 0, 1, 0, 0),
 (230, 7, 'Dusk Statue', 250000, 0, '', 0, 260230, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0),
 (231, 7, 'Mourning Statue', 250000, 0, '', 0, 260231, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0),
 (232, 7, 'Silvermoon Statue', 250000, 0, '', 0, 260232, 0, 0, -1, 0, 0, 0, 0, 1, 0, 0),
@@ -319,6 +318,16 @@ INSERT INTO `xorwow_guild_hall_catalog` VALUES
 (516, 15, 'Druid Trainer', 2000000, 1, '', 1, 0, 0, 260516, -1, 0, 0, 0, 0, 1, 0, 0),
 (517, 15, 'Druid Trainer', 2000000, 2, '', 1, 0, 0, 260517, -1, 0, 0, 0, 0, 1, 0, 0),
 (518, 15, 'Death Knight Trainer', 2000000, 0, '', 1, 0, 0, 260518, -1, 0, 0, 0, 0, 1, 0, 0),
+(396, 16, 'Blood Elf Dancer', 250000, 2, '', 0, 0, 0, 260396, -1, 0, 0, 0, 0, 1, 0, 0),
+(530, 16, 'Orc Dancer', 250000, 2, '', 0, 0, 0, 260530, -1, 0, 0, 0, 0, 1, 0, 0),
+(531, 16, 'Forsaken Dancer', 250000, 2, '', 0, 0, 0, 260531, -1, 0, 0, 0, 0, 1, 0, 0),
+(532, 16, 'Tauren Dancer', 250000, 2, '', 0, 0, 0, 260532, -1, 0, 0, 0, 0, 1, 0, 0),
+(533, 16, 'Troll Dancer', 250000, 2, '', 0, 0, 0, 260533, -1, 0, 0, 0, 0, 1, 0, 0),
+(534, 16, 'Human Dancer', 250000, 1, '', 0, 0, 0, 260534, -1, 0, 0, 0, 0, 1, 0, 0),
+(535, 16, 'Dwarf Dancer', 250000, 1, '', 0, 0, 0, 260535, -1, 0, 0, 0, 0, 1, 0, 0),
+(536, 16, 'Night Elf Dancer', 250000, 1, '', 0, 0, 0, 260536, -1, 0, 0, 0, 0, 1, 0, 0),
+(537, 16, 'Gnome Dancer', 250000, 1, '', 0, 0, 0, 260537, -1, 0, 0, 0, 0, 1, 0, 0),
+(538, 16, 'Draenei Dancer', 250000, 1, '', 0, 0, 0, 260538, -1, 0, 0, 0, 0, 1, 0, 0),
 (400, 13, 'Portal to Stormwind', 10000000, 1, '', 1, 260400, 0, 0, 0, -8833.38, 628.628, 94.0066, 1.06535, 1, 0, 0),
 (401, 13, 'Portal to Ironforge', 10000000, 1, '', 1, 260401, 0, 0, 0, -4918.88, -940.406, 501.564, 5.42347, 1, 0, 0),
 (402, 13, 'Portal to Darnassus', 10000000, 1, '', 1, 260402, 0, 0, 1, 9949.56, 2284.21, 1341.4, 1.59587, 1, 0, 0),
@@ -819,27 +828,12 @@ INSERT INTO `gameobject_template_addon` (`entry`, `faction`, `flags`) VALUES
 (260447, 0, 4),
 (260448, 0, 4);
 
-DELETE FROM `creature_template` WHERE `entry` IN (260396, 260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518);
-DELETE FROM `creature_template_model` WHERE `CreatureID` IN (260396, 260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518);
-DELETE FROM `creature_default_trainer` WHERE `CreatureId` IN (260396, 260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518);
-DELETE FROM `npc_vendor` WHERE `entry` IN (260396, 260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518);
-DELETE FROM `creature_template_addon` WHERE `entry` IN (260396, 260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518);
-DELETE FROM `creature_model_info` WHERE `DisplayID` IN (260396, 260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518);
-CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 22014;
-UPDATE `tmp_xorwow_npc` SET `entry` = 260396, `name` = 'Dancer', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '';
-INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
-DROP TEMPORARY TABLE `tmp_xorwow_npc`;
-INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES (260396, 0, 260396, 1, 1, 0);
-CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_model_info` WHERE `DisplayID` = 19826;
-UPDATE `tmp_xorwow_npc` SET `DisplayID` = 260396, `DisplayID_Other_Gender` = 0;
-INSERT INTO `creature_model_info` SELECT * FROM `tmp_xorwow_npc`;
-DROP TEMPORARY TABLE `tmp_xorwow_npc`;
-INSERT INTO `creature_template_addon` (`entry`, `emote`) VALUES (260396, 10);
-INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260396, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 22014;
-CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 22014;
-UPDATE `tmp_xorwow_npc` SET `entry` = 260396;
-INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
-DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+DELETE FROM `creature_template` WHERE `entry` IN (260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518, 260396, 260530, 260531, 260532, 260533, 260534, 260535, 260536, 260537, 260538);
+DELETE FROM `creature_template_model` WHERE `CreatureID` IN (260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518, 260396, 260530, 260531, 260532, 260533, 260534, 260535, 260536, 260537, 260538);
+DELETE FROM `creature_default_trainer` WHERE `CreatureId` IN (260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518, 260396, 260530, 260531, 260532, 260533, 260534, 260535, 260536, 260537, 260538);
+DELETE FROM `npc_vendor` WHERE `entry` IN (260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518, 260396, 260530, 260531, 260532, 260533, 260534, 260535, 260536, 260537, 260538);
+DELETE FROM `creature_template_addon` WHERE `entry` IN (260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518, 260396, 260530, 260531, 260532, 260533, 260534, 260535, 260536, 260537, 260538);
+DELETE FROM `creature_model_info` WHERE `DisplayID` IN (260382, 260383, 260384, 260385, 260386, 260387, 260388, 260389, 260390, 260391, 260392, 260393, 260394, 260395, 260460, 260461, 260462, 260463, 260464, 260465, 260466, 260467, 260468, 260469, 260470, 260471, 260472, 260473, 260474, 260475, 260476, 260477, 260478, 260479, 260480, 260481, 260482, 260483, 260484, 260485, 260486, 260487, 260500, 260501, 260502, 260503, 260504, 260505, 260506, 260507, 260508, 260509, 260510, 260511, 260512, 260513, 260514, 260515, 260516, 260517, 260518, 260396, 260530, 260531, 260532, 260533, 260534, 260535, 260536, 260537, 260538);
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 2455;
 UPDATE `tmp_xorwow_npc` SET `entry` = 260382, `name` = 'Banker', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '';
 INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
@@ -1625,5 +1619,155 @@ DROP TEMPORARY TABLE `tmp_xorwow_npc`;
 INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260518, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 28471;
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 28471;
 UPDATE `tmp_xorwow_npc` SET `entry` = 260518;
+INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260396, `name` = 'Dancer', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '', `faction` = 35;
+INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES (260396, 0, 260396, 1, 1, 0);
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_model_info` WHERE `DisplayID` = 19826;
+UPDATE `tmp_xorwow_npc` SET `DisplayID` = 260396, `DisplayID_Other_Gender` = 0;
+INSERT INTO `creature_model_info` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_addon` (`entry`, `emote`) VALUES (260396, 10);
+INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260396, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 22014;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260396;
+INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260530, `name` = 'Dancer', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '', `faction` = 35;
+INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES (260530, 0, 260530, 1, 1, 0);
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_model_info` WHERE `DisplayID` = 14800;
+UPDATE `tmp_xorwow_npc` SET `DisplayID` = 260530, `DisplayID_Other_Gender` = 0;
+INSERT INTO `creature_model_info` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_addon` (`entry`, `emote`) VALUES (260530, 10);
+INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260530, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 22014;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260530;
+INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260531, `name` = 'Dancer', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '', `faction` = 35;
+INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES (260531, 0, 260531, 1, 1, 0);
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_model_info` WHERE `DisplayID` = 21751;
+UPDATE `tmp_xorwow_npc` SET `DisplayID` = 260531, `DisplayID_Other_Gender` = 0;
+INSERT INTO `creature_model_info` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_addon` (`entry`, `emote`) VALUES (260531, 10);
+INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260531, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 22014;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260531;
+INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260532, `name` = 'Dancer', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '', `faction` = 35;
+INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES (260532, 0, 260532, 1, 1, 0);
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_model_info` WHERE `DisplayID` = 16334;
+UPDATE `tmp_xorwow_npc` SET `DisplayID` = 260532, `DisplayID_Other_Gender` = 0;
+INSERT INTO `creature_model_info` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_addon` (`entry`, `emote`) VALUES (260532, 10);
+INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260532, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 22014;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260532;
+INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260533, `name` = 'Dancer', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '', `faction` = 35;
+INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES (260533, 0, 260533, 1, 1, 0);
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_model_info` WHERE `DisplayID` = 13670;
+UPDATE `tmp_xorwow_npc` SET `DisplayID` = 260533, `DisplayID_Other_Gender` = 0;
+INSERT INTO `creature_model_info` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_addon` (`entry`, `emote`) VALUES (260533, 10);
+INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260533, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 22014;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260533;
+INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260534, `name` = 'Dancer', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '', `faction` = 35;
+INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES (260534, 0, 260534, 1, 1, 0);
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_model_info` WHERE `DisplayID` = 5446;
+UPDATE `tmp_xorwow_npc` SET `DisplayID` = 260534, `DisplayID_Other_Gender` = 0;
+INSERT INTO `creature_model_info` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_addon` (`entry`, `emote`) VALUES (260534, 10);
+INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260534, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 22014;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260534;
+INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260535, `name` = 'Dancer', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '', `faction` = 35;
+INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES (260535, 0, 260535, 1, 1, 0);
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_model_info` WHERE `DisplayID` = 14796;
+UPDATE `tmp_xorwow_npc` SET `DisplayID` = 260535, `DisplayID_Other_Gender` = 0;
+INSERT INTO `creature_model_info` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_addon` (`entry`, `emote`) VALUES (260535, 10);
+INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260535, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 22014;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260535;
+INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260536, `name` = 'Dancer', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '', `faction` = 35;
+INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES (260536, 0, 260536, 1, 1, 0);
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_model_info` WHERE `DisplayID` = 2575;
+UPDATE `tmp_xorwow_npc` SET `DisplayID` = 260536, `DisplayID_Other_Gender` = 0;
+INSERT INTO `creature_model_info` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_addon` (`entry`, `emote`) VALUES (260536, 10);
+INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260536, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 22014;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260536;
+INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260537, `name` = 'Dancer', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '', `faction` = 35;
+INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES (260537, 0, 260537, 1, 1, 0);
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_model_info` WHERE `DisplayID` = 13277;
+UPDATE `tmp_xorwow_npc` SET `DisplayID` = 260537, `DisplayID_Other_Gender` = 0;
+INSERT INTO `creature_model_info` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_addon` (`entry`, `emote`) VALUES (260537, 10);
+INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260537, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 22014;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260537;
+INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260538, `name` = 'Dancer', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '', `faction` = 35;
+INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`) VALUES (260538, 0, 260538, 1, 1, 0);
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_model_info` WHERE `DisplayID` = 21512;
+UPDATE `tmp_xorwow_npc` SET `DisplayID` = 260538, `DisplayID_Other_Gender` = 0;
+INSERT INTO `creature_model_info` SELECT * FROM `tmp_xorwow_npc`;
+DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `creature_template_addon` (`entry`, `emote`) VALUES (260538, 10);
+INSERT INTO `creature_default_trainer` (`CreatureId`, `TrainerId`) SELECT 260538, `TrainerId` FROM `creature_default_trainer` WHERE `CreatureId` = 22014;
+CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry` = 22014;
+UPDATE `tmp_xorwow_npc` SET `entry` = 260538;
 INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
 DROP TEMPORARY TABLE `tmp_xorwow_npc`;

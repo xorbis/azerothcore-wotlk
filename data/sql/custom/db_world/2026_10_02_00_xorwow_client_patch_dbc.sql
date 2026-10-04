@@ -3139,10 +3139,28 @@ INSERT INTO `gameobjectdisplayinfo_dbc` (`ID`, `ModelName`, `Sound_1`, `Sound_2`
 (264998, 'World\\XorWoW\\GuildBanners\\GuildStandard_0998.mdx', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -0.5918, -1.3615, 0.0, 0.5843, 1.3778, 6.087, 0),
 (264999, 'World\\XorWoW\\GuildBanners\\GuildStandard_0999.mdx', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -0.5918, -1.3615, 0.0, 0.5843, 1.3778, 6.087, 0);
 
-DELETE FROM `creaturedisplayinfo_dbc` WHERE `ID` IN (260396);
+DELETE FROM `creaturedisplayinfo_dbc` WHERE `ID` IN (260396, 260530, 260531, 260532, 260533, 260534, 260535, 260536, 260537, 260538);
 INSERT INTO `creaturedisplayinfo_dbc` (`ID`, `ModelID`, `SoundID`, `ExtendedDisplayInfoID`, `CreatureModelScale`, `CreatureModelAlpha`, `TextureVariation_1`, `TextureVariation_2`, `TextureVariation_3`, `PortraitTextureName`, `BloodLevel`, `BloodID`, `NPCSoundID`, `ParticleColorID`, `CreatureGeosetData`, `ObjectEffectPackageID`) VALUES
-(260396, 2209, 0, 260396, 1.0, 255, '', '', '', '', 0, 0, 151, 0, 0, 0);
+(260396, 2209, 0, 260396, 1.0, 255, '', '', '', '', 0, 0, 151, 0, 0, 0),
+(260530, 52, 0, 260530, 1.0, 255, '', '', '', '', 1, 0, 58, 0, 0, 0),
+(260531, 58, 0, 260531, 1.0, 255, '', '', '', '', 0, 0, 81, 0, 0, 0),
+(260532, 60, 0, 260532, 1.0, 255, '', '', '', '', -1, 0, 71, 0, 0, 0),
+(260533, 186, 0, 260533, 1.0, 255, '', '', '', '', 1, 0, 73, 0, 0, 0),
+(260534, 50, 0, 260534, 1.0, 255, '', '', '', '', 1, 0, 45, 0, 0, 0),
+(260535, 54, 0, 260535, 1.0, 255, '', '', '', '', 1, 0, 35, 0, 0, 0),
+(260536, 56, 0, 260536, 1.0, 255, '', '', '', '', 1, 0, 118, 0, 0, 0),
+(260537, 183, 0, 260537, 1.0, 255, '', '', '', '', 0, 0, 41, 0, 0, 0),
+(260538, 2250, 0, 260538, 1.0, 255, '', '', '', '', -1, 0, 206, 0, 0, 0);
 
-DELETE FROM `creaturedisplayinfoextra_dbc` WHERE `ID` IN (260396);
+DELETE FROM `creaturedisplayinfoextra_dbc` WHERE `ID` IN (260396, 260530, 260531, 260532, 260533, 260534, 260535, 260536, 260537, 260538);
 INSERT INTO `creaturedisplayinfoextra_dbc` (`ID`, `DisplayRaceID`, `DisplaySexID`, `SkinID`, `FaceID`, `HairStyleID`, `HairColorID`, `FacialHairID`, `NPCItemDisplay1`, `NPCItemDisplay2`, `NPCItemDisplay3`, `NPCItemDisplay4`, `NPCItemDisplay5`, `NPCItemDisplay6`, `NPCItemDisplay7`, `NPCItemDisplay8`, `NPCItemDisplay9`, `NPCItemDisplay10`, `NPCItemDisplay11`, `Flags`, `BakeName`) VALUES
-(260396, 10, 1, 13, 0, 11, 0, 0, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, '');
+(260396, 10, 1, 13, 0, 11, 0, 0, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
+(260530, 2, 1, 1, 7, 3, 5, 2, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
+(260531, 5, 1, 1, 7, 3, 5, 0, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
+(260532, 6, 1, 4, 1, 5, 0, 1, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
+(260533, 8, 1, 1, 2, 4, 9, 2, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
+(260534, 1, 1, 2, 2, 6, 2, 0, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
+(260535, 3, 1, 5, 9, 4, 3, 5, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
+(260536, 4, 1, 3, 2, 5, 1, 4, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
+(260537, 7, 1, 3, 3, 4, 3, 6, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
+(260538, 11, 1, 7, 3, 8, 3, 2, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, '');
