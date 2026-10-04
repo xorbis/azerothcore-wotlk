@@ -3154,7 +3154,7 @@ INSERT INTO `creaturedisplayinfo_dbc` (`ID`, `ModelID`, `SoundID`, `ExtendedDisp
 
 DELETE FROM `creaturedisplayinfoextra_dbc` WHERE `ID` IN (260396, 260530, 260531, 260532, 260533, 260534, 260535, 260536, 260537, 260538);
 INSERT INTO `creaturedisplayinfoextra_dbc` (`ID`, `DisplayRaceID`, `DisplaySexID`, `SkinID`, `FaceID`, `HairStyleID`, `HairColorID`, `FacialHairID`, `NPCItemDisplay1`, `NPCItemDisplay2`, `NPCItemDisplay3`, `NPCItemDisplay4`, `NPCItemDisplay5`, `NPCItemDisplay6`, `NPCItemDisplay7`, `NPCItemDisplay8`, `NPCItemDisplay9`, `NPCItemDisplay10`, `NPCItemDisplay11`, `Flags`, `BakeName`) VALUES
-(260396, 10, 1, 13, 0, 11, 0, 0, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
+(260396, 10, 1, 0, 0, 11, 0, 0, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
 (260530, 2, 1, 1, 7, 3, 5, 2, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
 (260531, 5, 1, 1, 7, 3, 5, 0, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
 (260532, 6, 1, 4, 1, 5, 0, 1, 0, 0, 0, 30675, 0, 26995, 0, 0, 0, 0, 0, 0, ''),
