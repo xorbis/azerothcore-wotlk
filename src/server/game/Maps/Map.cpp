@@ -2053,8 +2053,9 @@ Map::EnterState InstanceMap::CannotEnter(Player* player, bool loginCheck)
     }
 
     // xinef: dont allow LFG Group to enter other instance that is selected
+    // (XorWoW: not into a scripted instance map - the guild hall is open to a dungeon finder group too)
     if (Group* group = player->GetGroup())
-        if (group->isLFGGroup())
+        if (group->isLFGGroup() && !sMapMgr->GetScriptedInstanceMap(GetId()))
             if (!sLFGMgr->inLfgDungeonMap(group->GetGUID(), GetId(), GetDifficulty()))
             {
                 player->SendTransferAborted(GetId(), TRANSFER_ABORT_MAP_NOT_ALLOWED);
