@@ -85,6 +85,7 @@ private:
     float combatRange;
 
     Unit* SelectNextTarget(bool allowAutoSelect) const;
+    Unit* SelectNearestCombatTarget() const;
     void HandleReturnMovement();
     void DoAttack(Unit* target, bool chase);
     bool StartChase(Unit* target);

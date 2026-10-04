@@ -209,7 +209,15 @@ void PetAI::UpdateAI(uint32 diff)
                 HandleReturnMovement();
         }
         else
-            HandleReturnMovement();
+        {
+            // XorWoW: a pet whose target just died moves on to the nearest enemy
+            // already fighting the group instead of running back
+            if (Unit* nextTarget = SelectNearestCombatTarget())
+                AttackStart(nextTarget);
+
+            if (!me->GetVictim())
+                HandleReturnMovement();
+        }
     }
 
     // xinef: charm info must be always available
@@ -431,9 +439,14 @@ void PetAI::KilledUnit(Unit* victim)
     me->InterruptNonMeleeSpells(false);
 
     // Before returning to owner, see if there are more things to attack
-    if (Unit* nextTarget = SelectNextTarget(false))
+    Unit* nextTarget = SelectNextTarget(false);
+    if (!nextTarget)
+        nextTarget = SelectNearestCombatTarget();
+
+    if (nextTarget)
         AttackStart(nextTarget);
-    else
+
+    if (!me->GetVictim())
         HandleReturnMovement(); // Return
 }
 
@@ -556,6 +569,58 @@ Unit* PetAI::SelectNextTarget(bool allowAutoSelect) const
 
     // Default - no valid targets
     return nullptr;
+}
+
+Unit* PetAI::SelectNearestCombatTarget() const
+{
+    // XorWoW: nearest enemy already in combat with the pet, its owner or the owner's group,
+    // so a pet keeps fighting a pack instead of running back after each kill.
+    // Stay and passive keep their usual meaning, and a mob in crowd control is left alone.
+    static constexpr float MAX_OWNER_DIST = 40.0f;
+
+    // Only a pet that was fighting: not one told to follow (returning / at the owner) or to stay
+    CharmInfo* charmInfo = me->GetCharmInfo();
+    if (me->HasReactState(REACT_PASSIVE) || !charmInfo->HasCommandState(COMMAND_FOLLOW) ||
+        charmInfo->IsFollowing() || charmInfo->IsReturning() || charmInfo->IsAtStay())
+        return nullptr;
+
+    Player* owner = me->GetCharmerOrOwnerPlayerOrPlayerItself();
+    if (!owner || !owner->IsAlive())
+        return nullptr;
+
+    std::vector<Unit*> allies = { me, owner };
+    if (Group* group = owner->GetGroup())
+        for (GroupReference* itr = group->GetFirstMember(); itr != nullptr; itr = itr->next())
+            if (Player* member = itr->GetSource())
+                if (member != owner && member->IsInMap(owner) && member->IsAlive())
+                    allies.push_back(member);
+
+    Unit* nearest = nullptr;
+    float nearestDist = 0.0f;
+    for (Unit* ally : allies)
+    {
+        for (auto const& pair : ally->GetCombatManager().GetPvECombatRefs())
+        {
+            if (pair.second->IsSuppressedFor(ally))
+                continue;
+
+            Unit* enemy = pair.second->GetOther(ally);
+            if (!enemy->IsAlive() || !enemy->IsInMap(me) || enemy->HasBreakableByDamageCrowdControlAura())
+                continue;
+
+            if (!owner->IsWithinDist(enemy, MAX_OWNER_DIST) || !me->CanCreatureAttack(enemy))
+                continue;
+
+            float dist = me->GetExactDist(enemy);
+            if (!nearest || dist < nearestDist)
+            {
+                nearest = enemy;
+                nearestDist = dist;
+            }
+        }
+    }
+
+    return nearest;
 }
 
 void PetAI::HandleReturnMovement()
