@@ -29,10 +29,16 @@
  *   "GHB;EMBLEM?"                    -> "EMBLEM;<guild id>;<style>;<color>;<border>;<border color>;<background>",
  *                                    "EMBLEM;0" outside a guild: the addon keeps it for the launcher,
  *                                    which paints the guild banners' textures from it (Core\GuildBanners.cs)
+ *   "GHB;SELLALL"                    the guild master: everything placed goes, its price back into
+ *                                    the guild bank
+ *   "GHB;HALL;<n>"                   the guild master: the guild moves to hall n (xorwow_guild_hall.cpp's
+ *                                    HALLS), free; what the old hall held is sold first
  * and answers
- *   "GHB;STATE;<building>;<may edit>;<in own hall>;<guild bank copper>;<placed>;<limit>;<may tune>"
+ *   "GHB;STATE;<building>;<may edit>;<in own hall>;<guild bank copper>;<placed>;<limit>;<may tune>;
+ *              <guild master>;<hall>;<placed worth copper>"
  *     may tune: the account is in XorWoW.GuildHall.PreviewTuners (worldserver.conf, comma list,
  *     default XORBIS): the addon's preview tuning keys, for framing new catalogue models
+ *     hall: the guild's HALLS index; placed worth: what Sell all gives back
  *   "GHB;COUNT;<group>=<n>,..."      placed per limited group, for the "1 max" items
  *   "GHB;SEL;<object>;<item>;<scale>;<rot>;<refund copper>"  right-clicked in build mode: the addon
  *                                    picks it up (MOVE), or with Shift asks to remove it (REFUND)
@@ -86,6 +92,10 @@ bool IsGuildHallMap(uint32 mapId);
 bool IsInOwnGuildHall(Player* player);
 uint32 GuildOfHallInstance(uint32 mapId, uint32 instanceId);
 bool NearGuildHallEntrance(uint32 mapId, Position const& pos, float distance);
+uint8 GuildHallCount();
+uint8 GuildHallChoice(uint32 guildId);
+std::string GuildHallName(uint8 hall);
+void ChangeGuildHall(Guild* guild, uint8 hall);
 
 namespace
 {
@@ -204,6 +214,17 @@ namespace
     {
         auto it = objects.find(guildId);
         return it == objects.end() ? 0 : uint32(it->second.size());
+    }
+
+    // Under the lock: what the guild's objects would give back (what was paid for them).
+    uint64 PlacedWorth(uint32 guildId)
+    {
+        uint64 worth = 0;
+        auto it = objects.find(guildId);
+        if (it != objects.end())
+            for (auto const& [id, object] : it->second)
+                worth += object.price;
+        return worth;
     }
 
     // The portals to the faction capitals (catalogue items 400-407, guild_hall_catalog.py).
@@ -431,14 +452,17 @@ namespace
     {
         Guild* guild = player->GetGuild();
         uint32 placed;
+        uint64 worth;
         {
             std::lock_guard<std::mutex> guard(lock);
             placed = guild ? PlacedCount(guild->GetId()) : 0;
+            worth = guild ? PlacedWorth(guild->GetId()) : 0;
         }
         bool building = IsBuilder(player);
-        SendToAddon(player, Acore::StringFormat("STATE;{};{};{};{};{};{};{}", building ? 1 : 0, CanEditGuildHall(player) ? 1 : 0,
+        bool leader = guild && guild->GetLeaderGUID() == player->GetGUID();
+        SendToAddon(player, Acore::StringFormat("STATE;{};{};{};{};{};{};{};{};{};{}", building ? 1 : 0, CanEditGuildHall(player) ? 1 : 0,
             IsInOwnGuildHall(player) ? 1 : 0, guild ? guild->GetTotalBankMoney() : 0, placed, HALL_OBJECT_LIMIT,
-            MayTunePreviews(player) ? 1 : 0));
+            MayTunePreviews(player) ? 1 : 0, leader ? 1 : 0, guild ? GuildHallChoice(guild->GetId()) : 0, worth));
     }
 
     // The limited groups' counts, in as many messages as it takes (an addon message is 255 bytes).
@@ -577,7 +601,7 @@ namespace
         pending->rotation = 0;   // no turning: the object faces the camera as the preview does (user, 2026-10-02)
     }
 
-    std::string MoneyText(uint32 copper)
+    std::string MoneyText(uint64 copper)
     {
         std::string text;
         if (copper >= GOLD)
@@ -630,6 +654,101 @@ namespace
         }
         SendToAddon(player, Acore::StringFormat("DONE;{} refunded: {} back in the guild bank.", name, MoneyText(object.price)));
         UpdateBuilders(guild->GetId());
+    }
+
+    // Everything the guild placed, gone, its price back into the guild bank in one deposit (the
+    // guild master's). False = the bank cannot take it, nothing changed. World thread, no map
+    // update running.
+    bool SellAll(Player* player, Guild* guild, uint32& sold, uint64& worth)
+    {
+        uint32 const guildId = guild->GetId();
+        std::vector<PlacedObject> placed;
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            auto it = objects.find(guildId);
+            if (it != objects.end())
+                for (auto const& [id, object] : it->second)
+                    placed.push_back(object);
+            worth = PlacedWorth(guildId);
+        }
+        sold = uint32(placed.size());
+        if (placed.empty())
+            return true;
+        if (guild->GetTotalBankMoney() > GUILD_BANK_MONEY_LIMIT - worth)
+            return false;
+
+        CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+        for (uint64 left = worth; left;)
+        {
+            uint32 part = uint32(std::min<uint64>(left, MAX_MONEY_AMOUNT));   // the payment takes 32 bits
+            guild->HandleGuildHallPayment(trans, player->GetGUID(), part, true);   // fits: checked above
+            left -= part;
+        }
+        trans->Append("DELETE FROM xorwow_guild_hall_object WHERE guildid = {}", guildId);
+        CharacterDatabase.CommitTransaction(trans);
+
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            for (PlacedObject const& object : placed)
+                DespawnEverywhere(object);
+            objects.erase(guildId);
+        }
+        return true;
+    }
+
+    // "GHB;SELLALL": the guild master's button.
+    void SellAllRequest(Player* player)
+    {
+        Guild* guild = player->GetGuild();
+        if (!guild || guild->GetLeaderGUID() != player->GetGUID())
+        {
+            SendError(player, "Only the guild master can sell the whole hall.");
+            return;
+        }
+        uint32 sold;
+        uint64 worth;
+        if (!SellAll(player, guild, sold, worth))
+        {
+            SendError(player, "The guild bank cannot hold that much gold: nothing was sold.");
+            return;
+        }
+        if (!sold)
+            SendToAddon(player, "DONE;The hall is empty already.");
+        else
+            SendToAddon(player, Acore::StringFormat("DONE;{} objects sold: {} back in the guild bank.", sold, MoneyText(worth)));
+        UpdateBuilders(guild->GetId());
+        if (!IsBuilder(player))
+            SendState(player);
+    }
+
+    // "GHB;HALL;<n>": the guild master moves the guild to another hall; the old one is sold first.
+    void ChangeHallRequest(Player* player, uint8 hall)
+    {
+        Guild* guild = player->GetGuild();
+        if (!guild || guild->GetLeaderGUID() != player->GetGUID())
+        {
+            SendError(player, "Only the guild master can change the guild hall.");
+            return;
+        }
+        if (hall >= GuildHallCount())
+            return;
+        if (hall == GuildHallChoice(guild->GetId()))
+        {
+            SendError(player, Acore::StringFormat("Your guild is in {} already.", GuildHallName(hall)));
+            return;
+        }
+        uint32 sold;
+        uint64 worth;
+        if (!SellAll(player, guild, sold, worth))
+        {
+            SendError(player, "The guild bank cannot hold the old hall's gold: the hall was not changed.");
+            return;
+        }
+        SendToAddon(player, sold ? Acore::StringFormat("DONE;The guild moved to {}: {} objects sold, {} back in the guild bank.", GuildHallName(hall), sold, MoneyText(worth))
+            : Acore::StringFormat("DONE;The guild moved to {}.", GuildHallName(hall)));
+        ChangeGuildHall(guild, hall);   // the members inside are on their way out: build mode ends with the map change
+        UpdateBuilders(guild->GetId());
+        SendState(player);
     }
 
     // The guild's placed object of this name the player points at: of those on the map, the one
@@ -1160,6 +1279,13 @@ public:
         {
             if (std::optional<uint32> id = Acore::StringTo<uint32>(rest.substr(8)))
                 Refund(player, *id);
+        }
+        else if (rest == ";SELLALL")
+            SellAllRequest(player);
+        else if (rest.rfind(";HALL;", 0) == 0)
+        {
+            if (std::optional<uint32> hall = Acore::StringTo<uint32>(rest.substr(6)); hall && *hall < 256)
+                ChangeHallRequest(player, uint8(*hall));
         }
         else
             return true;   // an answer of ours echoed back, or someone else's

@@ -1,11 +1,17 @@
 /*
  * XorWoW: guild halls.
  *
- * Every guild has a hall of its own: map 725 for the Alliance, 726 for the Horde, both copies of
- * Dalaran Sewers (617) - same geometry, none of the arena's spawns. The maps come from the client
- * patch (Patch-Z.MPQ: Map, MapDifficulty, AreaTable, Light rows, loading screens 255/256) and
- * scripts\build-patch.ps1 (the server's terrain/collision/pathing files under the new ids); the
- * world rows are data/sql/custom/db_world/2026_10_02_0*_xorwow_*.sql.
+ * Every guild has a hall of its own, in the building its guild master picked (HALLS below, each a
+ * pair of maps, Alliance and Horde - same geometry as the original, none of its spawns):
+ *   0 Dalaran Sewers (617) as 725/726, the default
+ *   1 Nagrand Arena (559) as 727/728
+ *   2 Violet Hold (608) as 729/730
+ * The maps come from the client patch (Patch-Z.MPQ: Map, MapDifficulty, AreaTable, Light rows; every
+ * hall shows the guild hall loading screens 255/256) and scripts\build-patch.ps1 (the server's
+ * terrain/collision/pathing files under the new ids); the world rows are
+ * data/sql/custom/db_world/2026_10_02_0*_xorwow_*.sql and 2026_10_05_00_xorwow_guild_hall_choices.sql.
+ * The pick is characters.xorwow_guild_hall_choice (no row = Dalaran Sewers); a change sells what
+ * the old hall held (xorwow_guild_hall_build.cpp) and moves the members inside to the new one.
  *
  * One instance per guild, whoever is grouped with whom: the core asks this script which instance
  * a player goes into (MapMgr::ScriptedInstanceMap, a small XorWoW patch in the core) instead of
@@ -43,6 +49,7 @@
 #include "Guild.h"
 #include "GuildMgr.h"
 #include "MapMgr.h"
+#include "ObjectAccessor.h"
 #include "Opcodes.h"
 #include "Player.h"
 #include "ScriptMgr.h"
@@ -53,9 +60,11 @@
 #include "WorldPacket.h"
 #include "WorldSession.h"
 
+#include <iterator>
 #include <mutex>
 #include <optional>
 #include <unordered_map>
+#include <vector>
 
 namespace
 {
@@ -71,28 +80,56 @@ namespace
         Position entrance;
     };
 
-    // The arena's team start points (game_graveyard 1362/1363): clear floor, never in the way.
-    Hall const ALLIANCE_HALL = { 725, 4988, { 1218.01f, 764.795f, 14.7297f, 0.0f } };
-    Hall const HORDE_HALL    = { 726, 4989, { 1361.76f, 817.337f, 14.8449f, float(M_PI) } };
+    struct HallChoice
+    {
+        char const* name;
+        Hall alliance;
+        Hall horde;
+    };
+
+    // The entrances are clear floor, never in the way: the arenas' team start points (Dalaran:
+    // game_graveyard 1362/1363; Nagrand's facing the middle of the arena), the dungeons' own
+    // entrances (their areatrigger_teleport targets). The order is the addon's (GuildHallBuild.lua)
+    // and the saved choice's: append only.
+    HallChoice const HALLS[] =
+    {
+        { "Dalaran Sewers",     { 725, 4988, { 1218.01f, 764.795f, 14.7297f, 0.0f } },   { 726, 4989, { 1361.76f, 817.337f, 14.8449f, float(M_PI) } } },
+        { "Nagrand Arena",      { 727, 4990, { 4027.6f, 2972.78f, 12.0723f, 5.196f } },  { 728, 4991, { 4085.45f, 2866.83f, 12.4005f, 2.087f } } },
+        { "Violet Hold",        { 729, 4992, { 1808.82f, 803.93f, 44.364f, 6.282f } },   { 730, 4993, { 1808.82f, 803.93f, 44.364f, 6.282f } } },
+    };
+    constexpr uint8 HALL_COUNT = uint8(std::size(HALLS));
 
     Hall const* HallOfMap(uint32 mapId)
     {
-        if (mapId == ALLIANCE_HALL.mapId)
-            return &ALLIANCE_HALL;
-        if (mapId == HORDE_HALL.mapId)
-            return &HORDE_HALL;
+        for (HallChoice const& choice : HALLS)
+        {
+            if (mapId == choice.alliance.mapId)
+                return &choice.alliance;
+            if (mapId == choice.horde.mapId)
+                return &choice.horde;
+        }
         return nullptr;
     }
 
-    Hall const& HallOfTeam(TeamId team)
-    {
-        return team == TEAM_HORDE ? HORDE_HALL : ALLIANCE_HALL;
-    }
-
-    // Both are read and written from the map threads too (chat, teleports): under one lock.
+    // All are read and written from the map threads too (chat, teleports): under one lock.
     std::mutex lock;
     std::unordered_map<uint64, uint32> hallInstances;   // (map id << 32 | guild id) -> instance id
     std::unordered_map<uint32, uint32> editRanks;       // guild id -> ranks that may edit, bit n = rank n
+    std::unordered_map<uint32, uint8> choices;          // guild id -> its HALLS index; none = 0
+
+    uint8 ChoiceOf(uint32 guildId)
+    {
+        std::lock_guard<std::mutex> guard(lock);
+        auto it = choices.find(guildId);
+        return it == choices.end() ? 0 : it->second;
+    }
+
+    // The guild's hall for this faction (a guildless player: the default one).
+    Hall const& HallOf(uint32 guildId, TeamId team)
+    {
+        HallChoice const& choice = HALLS[ChoiceOf(guildId)];
+        return team == TEAM_HORDE ? choice.horde : choice.alliance;
+    }
 
     uint64 HallKey(uint32 mapId, uint32 guildId)
     {
@@ -129,9 +166,12 @@ namespace
         hallInstances[HallKey(mapId, guildId)] = instanceId;
     }
 
+    // In the guild's instance of the hall it uses now (not of one it moved out of).
     bool InOwnGuildHall(Player* player)
     {
-        return HallOfMap(player->GetMapId()) && GuildIdOf(player)
+        uint32 guildId = GuildIdOf(player);
+        return HallOfMap(player->GetMapId()) && guildId
+            && HallOf(guildId, player->GetTeamId()).mapId == player->GetMapId()
             && GuildInstance(player->GetMapId(), player) == player->GetInstanceId();
     }
 
@@ -158,9 +198,12 @@ namespace
     // Where the Guildstone sends the player: their guild's hall, at its entrance.
     std::optional<WorldLocation> GuildHallEntrance(Player* player)
     {
-        Hall const& hall = HallOfTeam(player->GetTeamId());
-        if (!player->GetGuildId() || !MapMgr::ExistMapAndVMap(hall.mapId, hall.entrance.GetPositionX(), hall.entrance.GetPositionY()))
-            return std::nullopt;   // no guild, or the hall's map files are missing (build-patch.ps1 copies them)
+        uint32 guildId = GuildIdOf(player);
+        if (!guildId)
+            return std::nullopt;
+        Hall const& hall = HallOf(guildId, player->GetTeamId());
+        if (!MapMgr::ExistMapAndVMap(hall.mapId, hall.entrance.GetPositionX(), hall.entrance.GetPositionY()))
+            return std::nullopt;   // the hall's map files are missing (build-patch.ps1 copies them)
         return WorldLocation(hall.mapId, hall.entrance);
     }
 
@@ -210,6 +253,29 @@ namespace
         ChatHandler(player->GetSession()).SendNotification("You are no longer a member of this guild. You will be teleported out in 60 seconds.");
         ChatHandler(player->GetSession()).SendSysMessage("You are no longer a member of this guild. You will be teleported out of the guild hall in 60 seconds.");
     }
+
+    // One of this faction's halls, whichever building.
+    bool IsTeamHall(Hall const* hall, TeamId team)
+    {
+        for (HallChoice const& choice : HALLS)
+            if (hall == (team == TEAM_HORDE ? &choice.horde : &choice.alliance))
+                return true;
+        return false;
+    }
+
+    // Someone left in a hall the guild moved out of (inside at the change, or logged in there
+    // later): into the hall it uses now. Not a member any more: home.
+    void MoveToCurrentHall(Player* player)
+    {
+        if (player->IsBeingTeleported())
+            return;
+        if (!player->IsAlive())
+            player->ResurrectPlayer(0.5f);
+        if (std::optional<WorldLocation> entrance = GuildHallEntrance(player))
+            player->TeleportTo(*entrance);
+        else
+            player->TeleportTo(player->m_homebindMapId, player->m_homebindX, player->m_homebindY, player->m_homebindZ, player->GetOrientation());
+    }
 }
 
 // The guild master always may; other ranks by the toggle.
@@ -244,6 +310,70 @@ bool NearGuildHallEntrance(uint32 mapId, Position const& pos, float distance)
 {
     Hall const* hall = HallOfMap(mapId);
     return hall && hall->entrance.GetExactDist2d(&pos) < distance;
+}
+
+// The halls a guild master can pick (the build panel's "Change hall").
+uint8 GuildHallCount()
+{
+    return HALL_COUNT;
+}
+
+uint8 GuildHallChoice(uint32 guildId)
+{
+    return ChoiceOf(guildId);
+}
+
+std::string GuildHallName(uint8 hall)
+{
+    return hall < HALL_COUNT ? HALLS[hall].name : "";
+}
+
+// The guild moves to another hall - one at a time, the old one closes to it. Its objects are sold
+// first (xorwow_guild_hall_build.cpp); everyone in its old hall instance goes to the new hall's
+// entrance. World thread, no map update running.
+void ChangeGuildHall(Guild* guild, uint8 hall)
+{
+    uint32 const guildId = guild->GetId();
+    uint8 const old = ChoiceOf(guildId);
+    if (hall >= HALL_COUNT || hall == old)
+        return;
+
+    std::vector<ObjectGuid> inside;
+    for (Hall const* oldHall : { &HALLS[old].alliance, &HALLS[old].horde })
+    {
+        uint32 instanceId;
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            auto it = hallInstances.find(HallKey(oldHall->mapId, guildId));
+            if (it == hallInstances.end())
+                continue;
+            instanceId = it->second;
+        }
+        if (Map* map = sMapMgr->FindMap(oldHall->mapId, instanceId))
+            map->DoForAllPlayers([&inside](Player* player) { inside.push_back(player->GetGUID()); });
+    }
+
+    {
+        std::lock_guard<std::mutex> guard(lock);
+        if (hall)
+            choices[guildId] = hall;
+        else
+            choices.erase(guildId);
+    }
+    if (hall)
+        CharacterDatabase.Execute("REPLACE INTO xorwow_guild_hall_choice (guildid, hall) VALUES ({}, {})", guildId, hall);
+    else
+        CharacterDatabase.Execute("DELETE FROM xorwow_guild_hall_choice WHERE guildid = {}", guildId);
+
+    WorldPacket data;
+    ChatHandler::BuildChatPacket(data, CHAT_MSG_SYSTEM, LANG_UNIVERSAL, nullptr, nullptr,
+        Acore::StringFormat("Your guild hall is now in {}.", HALLS[hall].name));
+    guild->BroadcastPacket(&data);
+
+    for (ObjectGuid const& guid : inside)
+        if (Player* player = ObjectAccessor::FindPlayer(guid))
+            if (!player->IsGameMaster())
+                MoveToCurrentHall(player);
 }
 
 // Guild Hall teleportation (260001), the Guildstone's spell.
@@ -311,20 +441,34 @@ public:
         return false;
     }
 
-    // Guild members only, each into their own faction's hall (game masters never get here).
-    bool OnPlayerCanEnterMap(Player* player, MapEntry const* entry, InstanceTemplate const* /*instance*/, MapDifficulty const* /*mapDiff*/, bool /*loginCheck*/) override
+    // Guild members only, each into their own faction's hall, the one their guild uses (game
+    // masters never get here). A login in a hall the guild has left is let in: the next update
+    // moves them to the new one rather than home.
+    bool OnPlayerCanEnterMap(Player* player, MapEntry const* entry, InstanceTemplate const* /*instance*/, MapDifficulty const* /*mapDiff*/, bool loginCheck) override
     {
         Hall const* hall = HallOfMap(entry->MapID);
         if (!hall)
             return true;
-        return GuildIdOf(player) && hall == &HallOfTeam(player->GetTeamId());
+        uint32 guildId = GuildIdOf(player);
+        if (!guildId)
+            return false;
+        if (loginCheck)
+            return IsTeamHall(hall, player->GetTeamId());
+        return hall == &HallOf(guildId, player->GetTeamId());
     }
 
     void OnPlayerUpdate(Player* player, uint32 diff) override
     {
         Eviction* eviction = player->CustomData.Get<Eviction>(EVICTION_KEY);
         if (!eviction || !eviction->remaining)
+        {
+            // in a hall the guild moved out of: into the new one
+            uint32 guildId;
+            if (HallOfMap(player->GetMapId()) && player->IsInWorld() && !player->IsBeingTeleported() && !player->IsGameMaster()
+                && (guildId = GuildIdOf(player)) && HallOf(guildId, player->GetTeamId()).mapId != player->GetMapId())
+                MoveToCurrentHall(player);
             return;
+        }
 
         if (!HallOfMap(player->GetMapId()) || InOwnGuildHall(player))
         {
@@ -366,10 +510,15 @@ public:
         {
             std::lock_guard<std::mutex> guard(lock);
             editRanks.erase(guild->GetId());
-            hallInstances.erase(HallKey(ALLIANCE_HALL.mapId, guild->GetId()));
-            hallInstances.erase(HallKey(HORDE_HALL.mapId, guild->GetId()));
+            choices.erase(guild->GetId());
+            for (HallChoice const& choice : HALLS)
+            {
+                hallInstances.erase(HallKey(choice.alliance.mapId, guild->GetId()));
+                hallInstances.erase(HallKey(choice.horde.mapId, guild->GetId()));
+            }
         }
         CharacterDatabase.Execute("DELETE FROM xorwow_guild_hall_rank WHERE guildid = {}", guild->GetId());
+        CharacterDatabase.Execute("DELETE FROM xorwow_guild_hall_choice WHERE guildid = {}", guild->GetId());
     }
 };
 
@@ -398,17 +547,31 @@ public:
 
     void OnStartup() override
     {
-        for (Hall const* hall : { &ALLIANCE_HALL, &HORDE_HALL })
+        for (HallChoice const& choice : HALLS)
         {
-            uint32 const mapId = hall->mapId;
-            MapMgr::ScriptedInstanceMap scripted;
-            scripted.Pick = [mapId](Player* player) { return GuildInstance(mapId, player); };
-            scripted.Created = [mapId](Player* player, uint32 instanceId) { SetGuildInstance(mapId, player, instanceId); };
-            scripted.AreaId = hall->areaId;
-            sMapMgr->SetScriptedInstanceMap(mapId, std::move(scripted));
+            for (Hall const* hall : { &choice.alliance, &choice.horde })
+            {
+                uint32 const mapId = hall->mapId;
+                MapMgr::ScriptedInstanceMap scripted;
+                scripted.Pick = [mapId](Player* player) { return GuildInstance(mapId, player); };
+                scripted.Created = [mapId](Player* player, uint32 instanceId) { SetGuildInstance(mapId, player, instanceId); };
+                scripted.AreaId = hall->areaId;
+                sMapMgr->SetScriptedInstanceMap(mapId, std::move(scripted));
+            }
         }
 
         std::lock_guard<std::mutex> guard(lock);
+        choices.clear();
+        if (QueryResult result = CharacterDatabase.Query("SELECT guildid, hall FROM xorwow_guild_hall_choice"))
+        {
+            do
+            {
+                Field* fields = result->Fetch();
+                uint8 hall = fields[1].Get<uint8>();
+                if (hall && hall < HALL_COUNT)
+                    choices[fields[0].Get<uint32>()] = hall;
+            } while (result->NextRow());
+        }
         editRanks.clear();
         if (QueryResult result = CharacterDatabase.Query("SELECT guildid, rid FROM xorwow_guild_hall_rank"))
         {
