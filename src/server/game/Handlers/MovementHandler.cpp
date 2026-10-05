@@ -78,7 +78,8 @@ void WorldSession::HandleMoveWorldportAck()
     }
 
     // reset instance validity, except if going to an instance inside an instance
-    if (!GetPlayer()->m_InstanceValid && !mInstance)
+    // (XorWoW: a scripted instance map counts as leaving - the guild hall is the guild's, not the old group's)
+    if (!GetPlayer()->m_InstanceValid && (!mInstance || sMapMgr->GetScriptedInstanceMap(loc.GetMapId())))
     {
         GetPlayer()->m_InstanceValid = true;
         // pussywizard: m_InstanceValid can be false only by leaving a group in an instance => so remove temp binds that could not be removed because player was still on the map!
