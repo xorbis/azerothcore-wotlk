@@ -945,6 +945,7 @@ CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry`
 UPDATE `tmp_xorwow_npc` SET `entry` = 260390;
 INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
 DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `npc_vendor` (`entry`, `slot`, `item`) VALUES (260390, 100, 39354), (260390, 101, 10648), (260390, 102, 39501), (260390, 103, 39505), (260390, 104, 4470), (260390, 105, 11291), (260390, 106, 10647), (260390, 107, 18567), (260390, 108, 2324), (260390, 109, 6260), (260390, 110, 2605), (260390, 111, 20815), (260390, 112, 20824), (260390, 113, 30817), (260390, 114, 159), (260390, 115, 1179), (260390, 116, 2665), (260390, 117, 6529), (260390, 118, 6533);
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 3367;
 UPDATE `tmp_xorwow_npc` SET `entry` = 260391, `name` = 'Trade Goods Vendor', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2, `AIName` = '', `ScriptName` = '';
 INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
@@ -958,6 +959,7 @@ CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `npc_vendor` WHERE `entry`
 UPDATE `tmp_xorwow_npc` SET `entry` = 260391;
 INSERT INTO `npc_vendor` SELECT * FROM `tmp_xorwow_npc`;
 DROP TEMPORARY TABLE `tmp_xorwow_npc`;
+INSERT INTO `npc_vendor` (`entry`, `slot`, `item`) VALUES (260391, 100, 39354), (260391, 101, 10648), (260391, 102, 39501), (260391, 103, 39505), (260391, 104, 4470), (260391, 105, 11291), (260391, 106, 10647), (260391, 107, 18567), (260391, 108, 2324), (260391, 109, 6260), (260391, 110, 2605), (260391, 111, 20815), (260391, 112, 20824), (260391, 113, 30817), (260391, 114, 159), (260391, 115, 1179), (260391, 116, 2665), (260391, 117, 6529), (260391, 118, 6533);
 CREATE TEMPORARY TABLE `tmp_xorwow_npc` SELECT * FROM `creature_template` WHERE `entry` = 11069;
 UPDATE `tmp_xorwow_npc` SET `entry` = 260392, `name` = 'Stable Master', `subname` = 'Guild Hall', `npcflag` = `npcflag` & ~2;
 INSERT INTO `creature_template` SELECT * FROM `tmp_xorwow_npc`;
