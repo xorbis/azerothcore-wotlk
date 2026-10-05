@@ -563,6 +563,7 @@ void WorldSession::HandleLootMasterGiveOpcode(WorldPacket& recvData)
     Item* newitem = target->StoreNewItem(dest, item.itemid, true, item.randomPropertyId, looters);
     target->SendNewItem(newitem, uint32(item.count), false, false, true);
     target->UpdateLootAchievements(&item, loot);
+    sScriptMgr->OnPlayerLootItem(target, newitem, item.count, lootguid);   // XorWoW: master loot is loot too (guild epic loot announcement)
 
     // mark as looted
     item.count = 0;
