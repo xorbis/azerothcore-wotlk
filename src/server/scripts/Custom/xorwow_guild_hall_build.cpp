@@ -206,6 +206,23 @@ namespace
         return it == objects.end() ? 0 : uint32(it->second.size());
     }
 
+    // The portals to the faction capitals (catalogue items 400-407, guild_hall_catalog.py).
+    bool IsCapitalPortal(uint32 itemId)
+    {
+        return itemId >= 400 && itemId <= 407;
+    }
+
+    // The guild's first capital portal is free, so a new hall has a way out; its refund is free too.
+    bool HasCapitalPortal(uint32 guildId)
+    {
+        auto it = objects.find(guildId);
+        if (it != objects.end())
+            for (auto const& [id, object] : it->second)
+                if (IsCapitalPortal(object.item))
+                    return true;
+        return false;
+    }
+
     // ---------------------------------------------------------------------------------------------
     // Spawning: temporary objects in the instance, nothing saved as a world spawn.
 
@@ -843,6 +860,8 @@ namespace
                     return;
                 }
             }
+            if (IsCapitalPortal(item.id) && !HasCapitalPortal(guildId))
+                item.price = 0;
         }
         if (guild->GetTotalBankMoney() < item.price)
         {
@@ -863,7 +882,7 @@ namespace
         }
 
         CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
-        if (!guild->HandleGuildHallPayment(trans, player->GetGUID(), item.price, false))
+        if (item.price && !guild->HandleGuildHallPayment(trans, player->GetGUID(), item.price, false))
         {
             SendError(player, Acore::StringFormat("{} costs {}: the guild bank has {}.", item.name, MoneyText(item.price), MoneyText(uint32(guild->GetTotalBankMoney()))));
             return;
@@ -878,7 +897,8 @@ namespace
             objects[guildId][object.id] = object;
             SpawnEverywhere(object);
         }
-        SendToAddon(player, Acore::StringFormat("DONE;{} placed for {}.", item.name, MoneyText(item.price)));
+        SendToAddon(player, item.price ? Acore::StringFormat("DONE;{} placed for {}.", item.name, MoneyText(item.price))
+            : Acore::StringFormat("DONE;{} placed for free.", item.name));
         UpdateBuilders(guildId);
     }
 
