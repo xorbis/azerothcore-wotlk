@@ -28,6 +28,8 @@
  *   "GHB;TURN;<degrees>;<name>"      turns that object where it stands (Shift + wheel over it)
  *   "GHB;LIFT;<notches>;<name>"      raises (or with a negative count lowers) it LIFT_STEP yards a
  *                                    notch where it stands (Alt + wheel over it)
+ *   "GHB;FREE;<0|1>"                 Ctrl went down / up: while it is down, a building kit piece goes
+ *                                    exactly where clicked instead of snapping to its neighbours
  *   "GHB;EMBLEM?"                    -> "EMBLEM;<guild id>;<style>;<color>;<border>;<border color>;<background>",
  *                                    "EMBLEM;0" outside a guild: the addon keeps it for the launcher,
  *                                    which paints the guild banners' textures from it (Core\GuildBanners.cs)
@@ -81,7 +83,11 @@
 #include "Tokenize.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
+#include <G3D/Vector2.h>
+#include <G3D/Vector3.h>
 
+#include <array>
+#include <cfloat>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -110,8 +116,25 @@ namespace
     constexpr uint32 SELECT_REPEAT_MS = 500;    // one right-click sends several requests
     constexpr float LIFT_STEP = 0.1f;           // yards an Alt + wheel notch raises or lowers an object
     constexpr uint32 GUILD_BANNER_SLOTS = 999;  // guild banner displays per model (client-patch/patch.json guild_banners)
+    constexpr float SNAP_RANGE = 3.0f;          // yards from the click a building kit piece may snap to
+    constexpr float SNAP_REACH = 16.0f;         // neighbours looked at: their spot within this of the click
+    constexpr float SNAP_TOUCH = 0.05f;         // yards two pieces may share without counting as overlapping
+    constexpr float REST_REACH = 1.0f;          // a floor's top this close to the floor clicked on carries what is placed on it
+    constexpr float QUARTER = float(M_PI) / 2;
 
     enum CatalogTeam : uint8 { CATALOG_BOTH = 0, CATALOG_ALLIANCE = 1, CATALOG_HORDE = 2 };
+
+    // How a building kit piece snaps (client-patch/guild_hall_catalog.py, xorwow_guild_hall_catalog.snap).
+    enum SnapKind : uint8
+    {
+        SNAP_NONE = 0,      // placed freely: everything but the kit
+        SNAP_FLOOR = 1,     // carries what is placed on it
+        SNAP_WALL = 2,
+        SNAP_DOORWAY = 3,   // a wall a door snaps into
+        SNAP_ROOF = 4,
+        SNAP_DOOR = 5,      // only into a doorway
+        SNAP_STAIRS = 6,
+    };
 
     struct CatalogItem
     {
@@ -129,6 +152,8 @@ namespace
         bool enabled = true;
         float rise = 0.0f;      // yards the object stands above where it is placed: models centred on their origin
         uint32 guildDisplay = 0; // guild banners: the guild's own display is this + its guild id
+        uint8 snap = SNAP_NONE;
+        G3D::Vector3 boxMin, boxMax;   // building kit: the piece's box around its origin
     };
 
     struct PlacedObject
@@ -159,6 +184,7 @@ namespace
         int32 rotation = 0;     // degrees, added to the object's facing
         uint32 lastSelect = 0;  // getMSTime() of the last right-click selection
         uint32 lastObject = 0;
+        bool freePlace = false; // Ctrl held: a building kit piece goes exactly where clicked, no snapping
     };
 
     struct Placement
@@ -874,6 +900,9 @@ namespace
             if (placed == objects.end() || !placed->second.count(found->id))
                 return;
             PlacedObject& stored = placed->second[found->id];
+            // a building kit piece turns in quarter turns: it stays square with its neighbours
+            if (CatalogItem const* item = FindItem(stored.item); item && item->snap != SNAP_NONE)
+                degrees = degrees > 0 ? 90 : -90;
             stored.pos.SetOrientation(Position::NormalizeOrientation(stored.pos.GetOrientation() + degrees * float(M_PI) / 180.0f));
             object = stored;
             TurnEverywhere(object);
@@ -919,6 +948,202 @@ namespace
         SendToAddon(player, Acore::StringFormat("SEL;{};{};{};{};{}", object.id, object.item, object.scale, facing, object.price));
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // The building kit: pieces snap to the pieces next to them (user, 2026-10-06).
+
+    // A kit piece where it stands: its spot and facing, its box around its origin.
+    struct Piece
+    {
+        uint32 objectId = 0;
+        uint8 snap = SNAP_NONE;
+        Position pos;
+        G3D::Vector3 min, max;
+    };
+
+    // (x, y) turned by angle
+    G3D::Vector2 Turned(float x, float y, float angle)
+    {
+        float c = std::cos(angle), s = std::sin(angle);
+        return { x * c - y * s, x * s + y * c };
+    }
+
+    // A box turned by quarter turns about its origin: its new bounds.
+    void TurnBox(G3D::Vector3 const& min, G3D::Vector3 const& max, int32 quarters, G3D::Vector3& outMin, G3D::Vector3& outMax)
+    {
+        outMin = min;
+        outMax = max;
+        switch (((quarters % 4) + 4) % 4)
+        {
+            case 1: outMin.x = -max.y; outMax.x = -min.y; outMin.y = min.x; outMax.y = max.x; break;
+            case 2: outMin.x = -max.x; outMax.x = -min.x; outMin.y = -max.y; outMax.y = -min.y; break;
+            case 3: outMin.x = min.y; outMax.x = max.y; outMin.y = -max.x; outMax.y = -min.x; break;
+            default: break;
+        }
+    }
+
+    // Two pieces share more than a touch: their heights and their footprints (any angle) overlap.
+    bool Overlap(Piece const& a, Piece const& b)
+    {
+        if (a.pos.GetPositionZ() + a.max.z - SNAP_TOUCH <= b.pos.GetPositionZ() + b.min.z
+            || b.pos.GetPositionZ() + b.max.z - SNAP_TOUCH <= a.pos.GetPositionZ() + a.min.z)
+            return false;
+        auto corners = [](Piece const& p, std::array<G3D::Vector2, 4>& out)
+        {
+            float xs[2] = { p.min.x, p.max.x }, ys[2] = { p.min.y, p.max.y };
+            for (int i = 0; i < 4; ++i)
+                out[i] = G3D::Vector2(p.pos.GetPositionX(), p.pos.GetPositionY()) + Turned(xs[i & 1], ys[i >> 1], p.pos.GetOrientation());
+        };
+        std::array<G3D::Vector2, 4> ca, cb;
+        corners(a, ca);
+        corners(b, cb);
+        // separating axes: each footprint's two edge directions
+        for (float angle : { a.pos.GetOrientation(), a.pos.GetOrientation() + QUARTER, b.pos.GetOrientation(), b.pos.GetOrientation() + QUARTER })
+        {
+            G3D::Vector2 axis(std::cos(angle), std::sin(angle));
+            float minA = FLT_MAX, maxA = -FLT_MAX, minB = FLT_MAX, maxB = -FLT_MAX;
+            for (int i = 0; i < 4; ++i)
+            {
+                minA = std::min(minA, ca[i].dot(axis));
+                maxA = std::max(maxA, ca[i].dot(axis));
+                minB = std::min(minB, cb[i].dot(axis));
+                maxB = std::max(maxB, cb[i].dot(axis));
+            }
+            if (maxA - SNAP_TOUCH <= minB || maxB - SNAP_TOUCH <= minA)
+                return false;
+        }
+        return true;
+    }
+
+    // Under the lock: the guild's kit pieces on this map, but one (the piece being moved).
+    std::vector<Piece> KitPieces(uint32 guildId, uint32 mapId, uint32 except)
+    {
+        std::vector<Piece> pieces;
+        auto placed = objects.find(guildId);
+        if (placed == objects.end())
+            return pieces;
+        for (auto const& [id, object] : placed->second)
+        {
+            CatalogItem const* item = FindItem(object.item);
+            if (!item || item->snap == SNAP_NONE || object.mapId != mapId || id == except)
+                continue;
+            pieces.push_back({ id, item->snap, object.pos, item->boxMin, item->boxMax });
+        }
+        return pieces;
+    }
+
+    // The height things stand at where the player clicked: the top of a kit floor there near the
+    // floor the click hit or near the player's own feet (the targeting circle may see the hall's
+    // floor below an upper storey), else the click's.
+    float RestingZ(std::vector<Piece> const& pieces, Position const& dest, float playerZ)
+    {
+        float best = dest.GetPositionZ();
+        float bestOff = FLT_MAX;
+        for (Piece const& p : pieces)
+        {
+            if (p.snap != SNAP_FLOOR)
+                continue;
+            G3D::Vector2 local = Turned(dest.GetPositionX() - p.pos.GetPositionX(), dest.GetPositionY() - p.pos.GetPositionY(), -p.pos.GetOrientation());
+            if (local.x < p.min.x || local.x > p.max.x || local.y < p.min.y || local.y > p.max.y)
+                continue;
+            float top = p.pos.GetPositionZ() + p.max.z;
+            for (float ref : { dest.GetPositionZ(), playerZ })
+            {
+                float off = std::fabs(top - ref);
+                if (off <= REST_REACH && off < bestOff)
+                {
+                    best = top;
+                    bestOff = off;
+                }
+            }
+        }
+        return best;
+    }
+
+    // Under the lock: where a kit piece clicked at dest (facing as placed) goes - against a piece
+    // next to it, side by side (flush or centred) or on top (upper floors on walls, walls on
+    // floors), quarter turns from it, never into another piece; the best spot within SNAP_RANGE
+    // of the click. With none, it stands where clicked, turned to the hall's quarters.
+    Position SnapPiece(CatalogItem const& item, Position const& dest, float playerZ, std::vector<Piece> const& pieces)
+    {
+        float wanted = dest.GetOrientation();
+        // the click's height: the floor it hit, or the player's storey when that floor is far below
+        float refZ = playerZ > dest.GetPositionZ() + 2.0f ? playerZ : dest.GetPositionZ();
+        std::optional<Position> best;
+        float bestScore = FLT_MAX;
+        auto consider = [&](Piece const& from, float ox, float oy, float oz, int32 quarters)
+        {
+            G3D::Vector2 offset = Turned(ox, oy, from.pos.GetOrientation());
+            Piece candidate;
+            candidate.snap = item.snap;
+            candidate.pos.Relocate(from.pos.GetPositionX() + offset.x, from.pos.GetPositionY() + offset.y, from.pos.GetPositionZ() + oz,
+                Position::NormalizeOrientation(from.pos.GetOrientation() + quarters * QUARTER));
+            candidate.min = item.boxMin;
+            candidate.max = item.boxMax;
+            float distance = candidate.pos.GetExactDist2d(&dest);
+            if (distance > SNAP_RANGE)
+                return;
+            float score = distance + 0.25f * std::fabs(candidate.pos.GetPositionZ() - refZ);
+            if (score >= bestScore)
+                return;
+            for (Piece const& other : pieces)
+            {
+                // a door shares its doorway's box, and only a door's
+                bool doorPair = (item.snap == SNAP_DOOR) != (other.snap == SNAP_DOOR)
+                    && (item.snap == SNAP_DOORWAY || other.snap == SNAP_DOORWAY);
+                if (!doorPair && Overlap(candidate, other))
+                    return;
+            }
+            best = candidate.pos;
+            bestScore = score;
+        };
+
+        for (Piece const& from : pieces)
+        {
+            if (from.pos.GetExactDist2d(&dest) > SNAP_REACH || from.snap == SNAP_DOOR)
+                continue;
+            int32 quarters = int32(std::lround(Position::NormalizeOrientation(wanted - from.pos.GetOrientation()) / QUARTER)) % 4;
+            if (item.snap == SNAP_DOOR)
+            {
+                // into a doorway, opening towards whichever side the player faces
+                if (from.snap == SNAP_DOORWAY)
+                    consider(from, 0, 0, 0, quarters == 1 || quarters == 2 ? 2 : 0);
+                continue;
+            }
+            G3D::Vector3 bmin, bmax;
+            TurnBox(item.boxMin, item.boxMax, quarters, bmin, bmax);
+            G3D::Vector3 const& nmin = from.min;
+            G3D::Vector3 const& nmax = from.max;
+            // along each axis: centred on it, flush with its low edge, flush with its high edge
+            float alignX[3] = { (nmin.x + nmax.x - bmin.x - bmax.x) / 2, nmin.x - bmin.x, nmax.x - bmax.x };
+            float alignY[3] = { (nmin.y + nmax.y - bmin.y - bmax.y) / 2, nmin.y - bmin.y, nmax.y - bmax.y };
+            float level = nmin.z - bmin.z;
+            // side by side, same level
+            for (float y : alignY)
+            {
+                consider(from, nmax.x - bmin.x, y, level, quarters);
+                consider(from, nmin.x - bmax.x, y, level, quarters);
+            }
+            for (float x : alignX)
+            {
+                consider(from, x, nmax.y - bmin.y, level, quarters);
+                consider(from, x, nmin.y - bmax.y, level, quarters);
+            }
+            // on top: not a floor on a floor, nothing on a slope
+            bool flatTop = from.snap != SNAP_ROOF && from.snap != SNAP_STAIRS;
+            if (flatTop && !(item.snap == SNAP_FLOOR && from.snap == SNAP_FLOOR))
+                for (float x : alignX)
+                    for (float y : alignY)
+                        consider(from, x, y, nmax.z - bmin.z, quarters);
+        }
+        if (best)
+            return *best;
+
+        Position loose = dest;
+        loose.m_positionZ = RestingZ(pieces, dest, playerZ);
+        loose.SetOrientation(Position::NormalizeOrientation(std::round(wanted / QUARTER) * QUARTER));
+        return loose;
+    }
+
     // World thread, no map update running: the spell's placement, paid and spawned.
     void Place(Player* player, Position dest)
     {
@@ -950,7 +1175,33 @@ namespace
         uint32 scale = pending->scale;
         uint32 moveObject = pending->moveObject;
         uint32 itemId = pending->item;
+        bool freePlace = pending->freePlace;
         pending->item = pending->moveObject = 0;
+
+        // A building kit piece snaps to the pieces next to it (Ctrl: where clicked); anything else
+        // stands on the kit floor clicked on.
+        bool snapped = false;
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            uint32 placing = itemId;
+            if (moveObject)
+            {
+                auto placed = objects.find(guildId);
+                if (placed != objects.end() && placed->second.count(moveObject))
+                    placing = placed->second[moveObject].item;
+            }
+            if (CatalogItem const* item = FindItem(placing))
+            {
+                std::vector<Piece> pieces = KitPieces(guildId, player->GetMapId(), moveObject);
+                if (item->snap == SNAP_NONE)
+                    dest.m_positionZ = RestingZ(pieces, dest, player->GetPositionZ());
+                else if (!freePlace)
+                {
+                    dest = SnapPiece(*item, dest, player->GetPositionZ(), pieces);
+                    snapped = true;
+                }
+            }
+        }
 
         if (moveObject)
         {
@@ -965,8 +1216,11 @@ namespace
                 }
                 PlacedObject& stored = placed->second[moveObject];
                 DespawnEverywhere(stored);
-                // a moved object keeps the angle it was turned to (user, 2026-10-02)
+                // a moved object keeps the angle it was turned to (user, 2026-10-02); a kit piece
+                // takes the one it snapped to
                 stored.pos.Relocate(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ());
+                if (snapped)
+                    stored.pos.SetOrientation(dest.GetOrientation());
                 stored.scale = scale;
                 stored.mapId = player->GetMapId();
                 object = stored;
@@ -1098,7 +1352,8 @@ namespace
         std::lock_guard<std::mutex> guard(lock);
         catalog.clear();
         QueryResult result = WorldDatabase.Query("SELECT id, name, price, team, limit_group, max_count, go_entry, focus_entry, npc_entry, "
-            "dest_map, dest_x, dest_y, dest_z, dest_o, enabled, rise, guild_display FROM xorwow_guild_hall_catalog");
+            "dest_map, dest_x, dest_y, dest_z, dest_o, enabled, rise, guild_display, snap, box_min_x, box_min_y, box_min_z, "
+            "box_max_x, box_max_y, box_max_z FROM xorwow_guild_hall_catalog");
         if (!result)
         {
             LOG_ERROR("server.loading", "XorWoW guild hall: world.xorwow_guild_hall_catalog is empty or missing - build mode has nothing to place.");
@@ -1122,6 +1377,9 @@ namespace
             item.enabled = f[14].Get<uint8>() != 0;
             item.rise = f[15].Get<float>();
             item.guildDisplay = f[16].Get<uint32>();
+            item.snap = f[17].Get<uint8>();
+            item.boxMin = G3D::Vector3(f[18].Get<float>(), f[19].Get<float>(), f[20].Get<float>());
+            item.boxMax = G3D::Vector3(f[21].Get<float>(), f[22].Get<float>(), f[23].Get<float>());
             if (item.goEntry && !sObjectMgr->GetGameObjectTemplate(item.goEntry))
                 LOG_ERROR("server.loading", "XorWoW guild hall: item {} ({}) has no gameobject_template {}", item.id, item.name, item.goEntry);
             if (item.npcEntry && !sObjectMgr->GetCreatureTemplate(item.npcEntry))
@@ -1230,6 +1488,20 @@ public:
     }
 };
 
+// A door (building kit, Houses & Structures): a click opens or shuts it, for anyone. Toggled here:
+// the core's own door use waits for an auto-close a hall door does not have, and stayed open.
+class xorwow_guild_hall_door : public GameObjectScript
+{
+public:
+    xorwow_guild_hall_door() : GameObjectScript("xorwow_guild_hall_door") { }
+
+    bool OnGossipHello(Player* /*player*/, GameObject* go) override
+    {
+        go->SetGoState(go->GetGoState() == GO_STATE_READY ? GO_STATE_ACTIVE : GO_STATE_READY);
+        return true;
+    }
+};
+
 // A portal: off to its catalogue destination.
 class xorwow_guild_hall_portal : public GameObjectScript
 {
@@ -1321,6 +1593,8 @@ public:
             if (steps && *steps >= -10 && *steps <= 10 && *steps != 0)
                 Lift(player, *steps, args.substr(sep + 1));
         }
+        else if (rest.rfind(";FREE;", 0) == 0)
+            player->CustomData.GetDefault<Pending>(PENDING_KEY)->freePlace = rest.substr(6) == "1";
         else if (rest.rfind(";REFUND;", 0) == 0)
         {
             if (std::optional<uint32> id = Acore::StringTo<uint32>(rest.substr(8)))
@@ -1461,6 +1735,7 @@ void AddSC_xorwow_guild_hall_build()
 {
     RegisterSpellScript(spell_xorwow_guild_hall_placement);
     new xorwow_guild_hall_decor();
+    new xorwow_guild_hall_door();
     new xorwow_guild_hall_portal();
     new xorwow_guild_hall_build_playerscript();
     new xorwow_guild_hall_build_mapscript();
