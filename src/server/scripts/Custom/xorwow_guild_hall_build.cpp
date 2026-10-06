@@ -26,6 +26,8 @@
  *                                    client sends no use request to tell which one it was)
  *   "GHB;FIND;<name>"                -> "SEL;..." for that object (Shift + right-click: remove)
  *   "GHB;TURN;<degrees>;<name>"      turns that object where it stands (Shift + wheel over it)
+ *   "GHB;LIFT;<notches>;<name>"      raises (or with a negative count lowers) it LIFT_STEP yards a
+ *                                    notch where it stands (Alt + wheel over it)
  *   "GHB;EMBLEM?"                    -> "EMBLEM;<guild id>;<style>;<color>;<border>;<border color>;<background>",
  *                                    "EMBLEM;0" outside a guild: the addon keeps it for the launcher,
  *                                    which paints the guild banners' textures from it (Core\GuildBanners.cs)
@@ -106,6 +108,7 @@ namespace
     constexpr uint32 HALL_OBJECT_LIMIT = 400;   // per guild: what one instance spawns at its first visit
     constexpr float ENTRANCE_CLEARANCE = 4.0f;  // yards kept free around the Guildstone's landing spot
     constexpr uint32 SELECT_REPEAT_MS = 500;    // one right-click sends several requests
+    constexpr float LIFT_STEP = 0.1f;           // yards an Alt + wheel notch raises or lowers an object
     constexpr uint32 GUILD_BANNER_SLOTS = 999;  // guild banner displays per model (client-patch/patch.json guild_banners)
 
     enum CatalogTeam : uint8 { CATALOG_BOTH = 0, CATALOG_ALLIANCE = 1, CATALOG_HORDE = 2 };
@@ -789,7 +792,8 @@ namespace
     // object in place (its parent rotation field: clients ignore it on a standing object) and sending
     // it again (a client keeps its copy, old angle). So the turned one is a new object, spawned
     // first; the old one then goes at once, without the despawn animation (its fade out was too
-    // slow). The new one's short fade in is the client's own. An NPC just turns.
+    // slow). The new one's short fade in is the client's own. An NPC just turns. A lifted object
+    // (Alt + wheel) is replaced the same way at its new height; a lifted NPC is moved there.
     void TurnEverywhere(PlacedObject const& object)
     {
         // the object stands its rise above its spot, as SpawnObject puts it; a crafting station's
@@ -814,7 +818,10 @@ namespace
                     if (Creature* npc = map->GetCreature(guid))
                     {
                         npc->SetHomePosition(object.pos);
-                        npc->SetFacingTo(object.pos.GetOrientation());
+                        if (std::fabs(npc->GetPositionZ() - object.pos.GetPositionZ()) > 0.01f)
+                            npc->NearTeleportTo(object.pos.GetPositionX(), object.pos.GetPositionY(), object.pos.GetPositionZ(), object.pos.GetOrientation());
+                        else
+                            npc->SetFacingTo(object.pos.GetOrientation());
                     }
                     kept.push_back(guid);
                     continue;
@@ -872,6 +879,37 @@ namespace
             TurnEverywhere(object);
         }
         CharacterDatabase.Execute("UPDATE xorwow_guild_hall_object SET o = {} WHERE id = {}", object.pos.GetOrientation(), object.id);
+    }
+
+    // Alt + wheel over a placed object: raised or lowered LIFT_STEP yards a notch where it stands,
+    // and saved. Moving it puts it back on the floor (its panel row's right-click reaches one
+    // lifted out of reach). World thread, no map update running.
+    void Lift(Player* player, int32 steps, std::string_view name)
+    {
+        std::string refusal = BuildRefusal(player);
+        if (!refusal.empty())
+        {
+            SendError(player, refusal);
+            return;
+        }
+        std::optional<PlacedObject> found = ObjectByName(player, name);
+        if (!found)
+        {
+            SendError(player, "That is not one of your hall's objects.");
+            return;
+        }
+        PlacedObject object;
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            auto placed = objects.find(found->guildId);
+            if (placed == objects.end() || !placed->second.count(found->id))
+                return;
+            PlacedObject& stored = placed->second[found->id];
+            stored.pos.m_positionZ += steps * LIFT_STEP;
+            object = stored;
+            TurnEverywhere(object);
+        }
+        CharacterDatabase.Execute("UPDATE xorwow_guild_hall_object SET z = {} WHERE id = {}", object.pos.GetPositionZ(), object.id);
     }
 
     // The addon's removal confirmation for this object (and its fallback pick-up).
@@ -1274,6 +1312,14 @@ public:
             std::optional<int32> degrees = sep == std::string_view::npos ? std::nullopt : Acore::StringTo<int32>(args.substr(0, sep));
             if (degrees && *degrees >= -180 && *degrees <= 180)
                 Turn(player, *degrees, args.substr(sep + 1));
+        }
+        else if (rest.rfind(";LIFT;", 0) == 0)
+        {
+            std::string_view args = rest.substr(6);
+            size_t sep = args.find(';');
+            std::optional<int32> steps = sep == std::string_view::npos ? std::nullopt : Acore::StringTo<int32>(args.substr(0, sep));
+            if (steps && *steps >= -10 && *steps <= 10 && *steps != 0)
+                Lift(player, *steps, args.substr(sep + 1));
         }
         else if (rest.rfind(";REFUND;", 0) == 0)
         {
