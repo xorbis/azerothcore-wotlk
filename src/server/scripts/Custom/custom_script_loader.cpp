@@ -27,6 +27,7 @@ void AddSC_xorwow_guild_hall();   // the Guildstone's teleport, the "Edit Guild 
 void AddSC_xorwow_guild_hall_build();   // guild hall build mode: objects placed, moved and refunded
 void AddSC_xorwow_guild_hall_offering();   // Golden Offering: the guild hall's coin toss, 1 gold to the guild bank
 void AddSC_xorwow_guild_epic_loot();   // guild chat announces a guild member's epic loot
+void AddSC_xorwow_account_professions();   // gathering and secondary professions are account-bound
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -43,4 +44,5 @@ void AddCustomScripts()
     AddSC_xorwow_guild_hall_build();
     AddSC_xorwow_guild_hall_offering();
     AddSC_xorwow_guild_epic_loot();
+    AddSC_xorwow_account_professions();
 }
