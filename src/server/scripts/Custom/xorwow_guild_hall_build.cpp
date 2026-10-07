@@ -316,6 +316,11 @@ namespace
                 npc->SetObjectScale(npc->GetObjectScale() * scale);
                 npc->SetHomePosition(object.pos);
                 npc->SetReactState(REACT_PASSIVE);
+                // Stands at the height placed, which is the visible top of what it was put on. With
+                // gravity the client grounds an NPC it is sent at login on that object's collision
+                // mesh, which on the Argent Stage lies a hand below the planks: ankles in the floor
+                // after a relog, fine when placed (user, 2026-10-07).
+                npc->SetDisableGravity(true);
                 guids.push_back(npc->GetGUID());
             }
         }
