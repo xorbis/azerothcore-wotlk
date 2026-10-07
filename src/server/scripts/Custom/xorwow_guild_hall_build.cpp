@@ -115,6 +115,7 @@ namespace
     constexpr float ENTRANCE_CLEARANCE = 4.0f;  // yards kept free around the Guildstone's landing spot
     constexpr uint32 SELECT_REPEAT_MS = 500;    // one right-click sends several requests
     constexpr float LIFT_STEP = 0.1f;           // yards an Alt + wheel notch raises or lowers an object
+    constexpr float NPC_FLOOR_REACH = 0.4f;     // yards off the hall's floor a placed NPC still stands on it
     constexpr uint32 GUILD_BANNER_SLOTS = 999;  // guild banner displays per model (client-patch/patch.json guild_banners)
     constexpr float SNAP_RANGE = 3.0f;          // yards from the click a building kit piece may snap to
     constexpr float SNAP_REACH = 16.0f;         // neighbours looked at: their spot within this of the click
@@ -311,16 +312,25 @@ namespace
         float scale = object.scale / 100.0f;
         if (item.npcEntry)
         {
-            if (TempSummon* npc = map->SummonCreature(item.npcEntry, object.pos))
+            // On the hall's own floor: stood on it, gravity on, and the client grounds it. The circle's
+            // hit sits a little above that floor at times, which without gravity is a floating NPC
+            // (user, 2026-10-07).
+            Position pos = object.pos;
+            float floor = map->GetHeight(pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ() + NPC_FLOOR_REACH, true, 2 * NPC_FLOOR_REACH);
+            bool onFloor = floor > INVALID_HEIGHT && std::fabs(floor - pos.GetPositionZ()) <= NPC_FLOOR_REACH;
+            if (onFloor)
+                pos.m_positionZ = floor;
+            if (TempSummon* npc = map->SummonCreature(item.npcEntry, pos))
             {
                 npc->SetObjectScale(npc->GetObjectScale() * scale);
-                npc->SetHomePosition(object.pos);
+                npc->SetHomePosition(pos);
                 npc->SetReactState(REACT_PASSIVE);
-                // Stands at the height placed, which is the visible top of what it was put on. With
-                // gravity the client grounds an NPC it is sent at login on that object's collision
-                // mesh, which on the Argent Stage lies a hand below the planks: ankles in the floor
-                // after a relog, fine when placed (user, 2026-10-07).
-                npc->SetDisableGravity(true);
+                // On a placed object it stands at the height placed, the visible top of the object.
+                // With gravity the client grounds an NPC it is sent at login on that object's
+                // collision mesh, which on the Argent Stage lies a hand below the planks: ankles in
+                // the floor after a relog, fine when placed (user, 2026-10-07).
+                if (!onFloor)
+                    npc->SetDisableGravity(true);
                 guids.push_back(npc->GetGUID());
             }
         }
