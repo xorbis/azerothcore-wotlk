@@ -338,7 +338,9 @@ namespace lfg
                 dungeon.o = at->target_Orientation;
             }
 
-            if (dungeon.type != LFG_TYPE_RANDOM)
+            // XorWoW: Upper Blackrock Spire (44) is a Classic dungeon here (LFGDungeons row changed by
+            // the client patch), offered under Specific Dungeons only - not in the random pool
+            if (dungeon.type != LFG_TYPE_RANDOM && dungeon.id != 44)
                 CachedDungeonMapStore[dungeon.group].insert(dungeon.id);
             CachedDungeonMapStore[0].insert(dungeon.id);
         }
