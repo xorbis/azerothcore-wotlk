@@ -31,6 +31,7 @@
 #include "LFGPlayerData.h"
 #include "LFGQueue.h"
 #include "Language.h"
+#include "MapMgr.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
 #include "Player.h"
@@ -2289,7 +2290,9 @@ namespace lfg
                 teleportLocation->GetWorldLocation(mapid, x, y, z, orientation);
             }
 
-            if (!player->GetMap()->IsDungeon() || player->GetEntryPoint().GetMapId() == MAPID_INVALID)
+            // (XorWoW: a guild hall counts as outside - its spot is where the player comes back to)
+            if (!player->GetMap()->IsDungeon() || player->GetEntryPoint().GetMapId() == MAPID_INVALID
+                || sMapMgr->GetScriptedInstanceMap(player->GetMapId()))
             {
                 player->SetEntryPoint();
             }

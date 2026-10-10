@@ -1659,6 +1659,10 @@ bool Player::TeleportToEntryPoint()
         return TeleportTo(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ, GetOrientation());
     }
 
+    // XorWoW: a guild hall that no longer takes the player (left the guild, the guild changed halls) - go home
+    if (sMapMgr->GetScriptedInstanceMap(loc.GetMapId()) && sMapMgr->PlayerCannotEnter(loc.GetMapId(), this, false))
+        return TeleportTo(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ, GetOrientation());
+
     return TeleportTo(loc);
 }
 
@@ -11500,7 +11504,10 @@ void Player::SetEntryPoint()
         else
             m_entryPointData.mountSpell = 0;
 
-        if (GetMap()->IsDungeon())
+        // XorWoW: queued from a guild hall - come back to the same spot in it, not its graveyard
+        if (sMapMgr->GetScriptedInstanceMap(GetMapId()))
+            m_entryPointData.joinPos = WorldLocation(GetMapId(), GetPositionX(), GetPositionY(), GetPositionZ(), GetOrientation());
+        else if (GetMap()->IsDungeon())
         {
             if (GraveyardStruct const* entry = sGraveyard->GetClosestGraveyard(this, GetTeamId()))
                 m_entryPointData.joinPos = WorldLocation(entry->Map, entry->x, entry->y, entry->z, 0.0f);
