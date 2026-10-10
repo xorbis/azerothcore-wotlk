@@ -1233,7 +1233,7 @@ public:                                                 // opcodes handlers
         return _isBot;
     }
 
-    // XorWoW: the mark added after a bot's name for the other players' clients (see SendNameQueryOpcode):
+    // XorWoW: what kind of bot this is, for the /who filters and the XorWoW addon's unit marks (xorwow_unit_marks.cpp):
     // '*' for a bot, '@' for a player's alt played by the bot AI (set by mod-playerbots at login), 0 for players
     [[nodiscard]] char GetBotNameMark() const { return _isBot ? _botNameMark : 0; }
     void SetBotNameMark(char mark) { _botNameMark = mark; }

@@ -208,8 +208,8 @@ std::string ScriptInfo::GetDebugInfo() const
 
 bool normalizePlayerName(std::string& name)
 {
-    // XorWoW: a trailing " *" or " @" is the bot mark the realm adds to bot names (see SendNameQueryOpcode),
-    // which the client then sends back when whispering, inviting, etc. Never part of a real name.
+    // XorWoW: a trailing " *" or " @" is the bot mark the realm used to add to bot names; a client that
+    // still has one in its name cache sends it back when whispering, inviting, etc. Never part of a real name.
     if (!name.empty() && (name.back() == '*' || name.back() == '@'))
     {
         name.pop_back();

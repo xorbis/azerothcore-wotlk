@@ -278,7 +278,7 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
     wstrToLower(wpacketPlayerName);
     wstrToLower(wpacketGuildName);
 
-    // XorWoW: n-"Name *" or n-"Name @" (a bot's name as the client shows it) matches the plain name
+    // XorWoW: n-"Name *" or n-"Name @" (a bot's name with the mark it used to carry, still in a client's name cache) matches the plain name
     if (!wpacketPlayerName.empty() && (wpacketPlayerName.back() == L'*' || wpacketPlayerName.back() == L'@'))
     {
         wpacketPlayerName.pop_back();

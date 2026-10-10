@@ -47,11 +47,9 @@ void WhoListCacheMgr::Update()
 
         wstrToLower(widePlayerName);
 
-        // XorWoW: bots are listed as "Name *" or "Name @", like their name query (see SendNameQueryOpcode);
-        // the lowercase name used for the /who filters stays the plain one
+        // XorWoW: '*' bot, '@' alt played by the bot AI, for the "/who bots|nobots|alts" filters; the XorWoW
+        // addon shows them as icons (xorwow_unit_marks.cpp), the name itself carries no mark
         char botMark = player->GetSession()->GetBotNameMark();
-        if (botMark)
-            playerName = playerName + ' ' + botMark;
 
         std::string guildName = sGuildMgr->GetGuildNameById(player->GetGuildId());
         std::wstring wideGuildName;
