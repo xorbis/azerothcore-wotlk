@@ -9,13 +9,14 @@
  *
  * Rules (FF8's Triple Triad rules, renamed): each player plays the 5 cards of the deck saved in
  * the collection window, one card per turn on an empty square. A side higher than the touching
- * side of an enemy card flips it. Always on: Open (both hands shown), Same, Plus and Combo, and
+ * side of an enemy card flips it. Always on: Combo (with Same or Plus) and
  * Elemental: 1-3 random squares carry an element, a card of that element gets +1 on every side
  * there, a card of another element -1, a card without one nothing; and a card whose element beats
  * the other's on the circle (Water > Fire > Frost > Earth > Arcane > Holy > Shadow > Nature >
  * Water) gets +1 on the touching side for that comparison. Same and Plus use the printed numbers.
- * Optional, set by the challenger: Same Wall (the board's edges count as A for Same) and Sudden
- * Death (a draw is replayed, up to 3 times, with the cards each player holds at its end).
+ * Set by the challenger: Open (both hands shown, else the opponent's cards stay face down until
+ * played), Same and Plus (all three on by default), Same Wall (the board's edges count as A for
+ * Same) and Sudden Death (a draw is replayed, up to 3 times, with the cards each player holds).
  * Stakes, agreed before the game: none, One (the winner takes 1 card of the loser's deck) or Diff
  * (as many as the score difference). A deck is 5 different owned cards, at most one of tier 9-10
  * and at most two of tier 7 or more; a valid deck is needed to challenge and to accept.
@@ -80,6 +81,10 @@ namespace
     {
         RULE_SAME_WALL    = 0x1,
         RULE_SUDDEN_DEATH = 0x2,
+        RULE_OPEN         = 0x4,
+        RULE_SAME         = 0x8,
+        RULE_PLUS         = 0x10,
+        RULE_ALL          = RULE_SAME_WALL | RULE_SUDDEN_DEATH | RULE_OPEN | RULE_SAME | RULE_PLUS,
     };
 
     enum Stake : uint32
@@ -161,6 +166,19 @@ namespace
             CharacterDatabase.DirectExecute("DELETE FROM `xorwow_tcg_collection` WHERE `account` = {} AND `card` = {}", accountId, card);
     }
 
+    // Empties the deck slots of cards the account no longer owns; true when one was emptied.
+    bool PruneDeck(Account& a)
+    {
+        bool pruned = false;
+        for (uint32& id : a.deck)
+            if (id && (id > MAX_CARD || !a.counts[id]))
+            {
+                id = 0;
+                pruned = true;
+            }
+        return pruned;
+    }
+
     // Loads the account the first time it is needed. A new account gets the starter deck: every
     // classic tier 1 card, saved as its deck, so it can play at once.
     Account& GetAccount(uint32 accountId, bool* starter = nullptr)
@@ -195,6 +213,9 @@ namespace
             a.fled = f[4].Get<uint32>();
             a.cardsWon = f[5].Get<uint32>();
             a.cardsLost = f[6].Get<uint32>();
+            // a deck saved before lost cards left it
+            if (PruneDeck(a))
+                SaveAccount(accountId, a);
         }
         else
         {
@@ -333,6 +354,7 @@ namespace
         std::string name;
         std::array<uint32, HAND> deck{};     // the deck it came with: what a bet takes from
         std::vector<uint32> hand;            // the round's hand, played cards set to 0
+        float x = 0.0f, y = 0.0f, z = 0.0f;  // where it stood when the game began
     };
 
     struct Cell
@@ -457,8 +479,16 @@ namespace
 
         for (uint8 s = 0; s < 2; ++s)
         {
+            // without Open, the opponent's cards go out face down ("?") until played
+            std::array<std::string, 2> hands = { HandString(g.seats[0].hand), HandString(g.seats[1].hand) };
+            if (!(g.rules & RULE_OPEN))
+            {
+                hands[1 - s].clear();
+                for (size_t i = 0; i < g.seats[1 - s].hand.size(); ++i)
+                    hands[1 - s] += i ? ",?" : "?";
+            }
             Send(SeatPlayer(g, s), Acore::StringFormat("START;{};{};{};{};{};{};{};{};{};{}", g.id, g.seats[1 - s].name, g.rules, g.stake, s,
-                HandString(g.seats[0].hand), HandString(g.seats[1].hand), SquaresString(g), g.first, g.round));
+                hands[0], hands[1], SquaresString(g), g.first, g.round));
         }
         SendBoth(g, Acore::StringFormat("TURN;{};{};{}", g.id, g.turn, TURN_SECONDS));
     }
@@ -545,7 +575,7 @@ namespace
             uint32 mine = card->ranks[side];
             if (n < 0)
             {
-                if ((g.rules & RULE_SAME_WALL) && mine == 10)
+                if ((g.rules & RULE_SAME) && (g.rules & RULE_SAME_WALL) && mine == 10)
                     ++sameCount;
                 continue;
             }
@@ -567,13 +597,14 @@ namespace
             events.push_back(Acore::StringFormat("F:{}:{}:{}", n + 1, seat, cause));
             special.push_back(uint32(n));
         };
-        if (sameCount >= 2)
+        if ((g.rules & RULE_SAME) && sameCount >= 2)
             for (int n : sameHits)
                 flip(n, 'S');
-        for (auto const& [sum, cellsWithSum] : sums)
-            if (cellsWithSum.size() >= 2)
-                for (int n : cellsWithSum)
-                    flip(n, 'P');
+        if (g.rules & RULE_PLUS)
+            for (auto const& [sum, cellsWithSum] : sums)
+                if (cellsWithSum.size() >= 2)
+                    for (int n : cellsWithSum)
+                        flip(n, 'P');
 
         Capture(g, cell, 'B', events, nullptr);
 
@@ -677,6 +708,7 @@ namespace
         ++wa.counts[card];
         ++wa.cardsWon;
         ++la.cardsLost;
+        PruneDeck(la);   // the last copy leaves the deck too
         g.taken.push_back(card);
         SaveCount(lose.account, la, card);
         SaveCount(win.account, wa, card);
@@ -701,7 +733,7 @@ namespace
     }
 
     // The game is over: the record, then the bet.
-    void EndGame(Game& g, int winner, int fledSeat)
+    void EndGame(Game& g, int winner, int fledSeat, std::string const& why = "")
     {
         uint32 s0, s1;
         Score(g, s0, s1);
@@ -713,8 +745,8 @@ namespace
             g.results[s] = r;
             g.scores[s] = score[s];
             CountResult(g, s, r);
-            Send(SeatPlayer(g, s), Acore::StringFormat("END;{};{};{};{};{};{}", g.id, winner < 0 ? "D" : winner == s ? "W" : "L",
-                score[s], score[1 - s], fledSeat < 0 ? "" : g.seats[fledSeat].name, uint32(r)));
+            Send(SeatPlayer(g, s), Acore::StringFormat("END;{};{};{};{};{};{};{}", g.id, winner < 0 ? "D" : winner == s ? "W" : "L",
+                score[s], score[1 - s], fledSeat < 0 ? "" : g.seats[fledSeat].name, uint32(r), why));
         }
 
         if (winner < 0 || g.stake == STAKE_NONE)
@@ -751,7 +783,7 @@ namespace
             return;
         Notice(SeatPlayer(g, 1 - seat), Acore::StringFormat("{} {}: you win.", g.seats[seat].name, why));
         Notice(SeatPlayer(g, seat), Acore::StringFormat("You {}: you lose the game.", why));
-        EndGame(g, 1 - seat, seat);
+        EndGame(g, 1 - seat, seat, why);
     }
 
     void EndOfRound(Game& g)
@@ -889,7 +921,7 @@ namespace
         c.id = nextId++;
         c.from = player->GetGUID();
         c.to = target->GetGUID();
-        c.rules = Acore::StringTo<uint32>(args[2]).value_or(0) & (RULE_SAME_WALL | RULE_SUDDEN_DEATH);
+        c.rules = Acore::StringTo<uint32>(args[2]).value_or(0) & RULE_ALL;
         c.stake = std::min<uint32>(Acore::StringTo<uint32>(args[3]).value_or(0), STAKE_DIFF);
         c.expires = Now() + CHALLENGE_SECONDS;
         challenges[c.id] = c;
@@ -951,6 +983,7 @@ namespace
             seat.name = players[s]->GetName();
             seat.deck = accs[s]->deck;
             seat.hand.assign(seat.deck.begin(), seat.deck.end());
+            players[s]->GetPosition(seat.x, seat.y, seat.z);
             playerGame[seat.guid] = g.id;
         }
         g.mapId = from->GetMapId();
@@ -1027,6 +1060,8 @@ namespace
             return SendError(player, "Your bags are full.");
         --a.counts[id];
         SaveCount(accountId, a, id);
+        if (PruneDeck(a))
+            SaveAccount(accountId, a);
         SendCard(player, a, id);
         SendDeck(player, a);
     }
@@ -1167,6 +1202,12 @@ namespace
             if (g.phase == Phase::Playing)
             {
                 Player* p[2] = { SeatPlayer(g, 0), SeatPlayer(g, 1) };
+                // Out of range: the one who moved farther from where it stood walked away, not seat 0
+                int walker = -1;
+                if (p[0] && p[0]->IsInWorld() && p[1] && p[1]->IsInWorld() && p[0]->GetMapId() == p[1]->GetMapId()
+                    && p[0]->GetInstanceId() == p[1]->GetInstanceId() && !InRange(p[0], p[1], RANGE_SLACK))
+                    walker = p[0]->GetExactDist(g.seats[0].x, g.seats[0].y, g.seats[0].z)
+                        >= p[1]->GetExactDist(g.seats[1].x, g.seats[1].y, g.seats[1].z) ? 0 : 1;
                 bool ended = false;
                 for (uint8 s = 0; s < 2 && !ended; ++s)
                 {
@@ -1177,7 +1218,7 @@ namespace
                         why = "died";
                     else if (p[s]->GetMapId() != g.mapId || p[s]->GetInstanceId() != g.instanceId || p[s]->GetZoneId() != g.zoneId)
                         why = "left the zone";
-                    else if (p[1 - s] && p[1 - s]->IsInWorld() && !InRange(p[s], p[1 - s], RANGE_SLACK))
+                    else if (walker == s)
                         why = "walked away";
                     if (!why.empty())
                     {
