@@ -448,6 +448,10 @@ void Player::UpdateNextMailTimeAndUnreads()
 
     for (Mail const* mail : GetMails())
     {
+        // deleted mails stay in the list until the next save; they are neither pending nor unread
+        if (mail->state == MAIL_STATE_DELETED)
+            continue;
+
         if (mail->deliver_time > cTime)
         {
             if (!m_nextMailDelivereTime || m_nextMailDelivereTime > mail->deliver_time)
@@ -462,7 +466,8 @@ void Player::UpdateNextMailTimeAndUnreads()
         if (cTime < mail->deliver_time || cTime > mail->expire_time)
             continue;
 
-        unReadMails++;
+        if (unReadMails < 0xFF)                            // uint8, do not wrap to 0 past 255 mails
+            unReadMails++;
     }
 }
 

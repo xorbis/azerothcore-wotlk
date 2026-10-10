@@ -394,7 +394,7 @@ void WorldSession::HandleMailMarkAsRead(WorldPacket& recvData)
     Mail* m = player->GetMail(mailId);
     if (m && m->state != MAIL_STATE_DELETED)
     {
-        if (player->unReadMails)
+        if (player->unReadMails && !(m->checked & MAIL_CHECK_MASK_READ))
             --player->unReadMails;
         m->checked = m->checked | MAIL_CHECK_MASK_READ;
         player->m_mailsUpdated = true;
@@ -892,6 +892,11 @@ void WorldSession::HandleQueryNextMailTime(WorldPacket& /*recvData*/)
 {
     WorldPacket data(MSG_QUERY_NEXT_MAIL_TIME, 8);
 
+    // Recount instead of trusting the running counter: it drifts when unread mail is deleted
+    // or emptied without being opened, and a stale count made the client keep showing the
+    // minimap mail icon after everything had been read
+    _player->UpdateNextMailTimeAndUnreads();
+
     if (_player->unReadMails > 0)
     {
         data << float(0);                                  // float
@@ -902,6 +907,9 @@ void WorldSession::HandleQueryNextMailTime(WorldPacket& /*recvData*/)
         std::set<uint32> sentSenders;
         for (Mail const* mail : _player->GetMails())
         {
+            if (mail->state == MAIL_STATE_DELETED)
+                continue;
+
             // must be not checked yet
             if (mail->checked & MAIL_CHECK_MASK_READ)
                 continue;
