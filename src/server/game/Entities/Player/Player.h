@@ -41,6 +41,7 @@
 #include "TradeData.h"
 #include "Unit.h"
 #include "WorldSession.h"
+#include <functional>
 #include <set>
 #include <string>
 #include <vector>
@@ -1262,6 +1263,11 @@ public:
     uint32 GetItemCount(uint32 item, bool inBankAlso = false, Item* skipItem = nullptr) const;
     uint32 GetItemCountWithLimitCategory(uint32 limitCategory, Item* skipItem = nullptr) const;
     [[nodiscard]] Item* GetItemByGuid(ObjectGuid guid) const;
+    // XorWoW: items the player locked (xorwow_item_lock.cpp) cannot leave the bags - no sale, trade, mail,
+    // auction, guild bank, refund, destroy, disenchant, prospect, mill or socketing - until unlocked.
+    // Set by the script; notify: tell the player why.
+    static std::function<bool(Player*, Item const*, bool notify)> XorWoWItemLocked;
+    bool IsXorWoWItemLocked(Item const* item, bool notify = true) { return item && XorWoWItemLocked && XorWoWItemLocked(this, item, notify); }
     [[nodiscard]] Item* GetItemByEntry(uint32 entry) const;
     [[nodiscard]] Item* GetItemByPos(uint16 pos) const;
     [[nodiscard]] Item* GetItemByPos(uint8 bag, uint8 slot) const;

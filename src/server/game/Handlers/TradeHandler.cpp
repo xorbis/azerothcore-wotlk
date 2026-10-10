@@ -304,7 +304,7 @@ void WorldSession::HandleAcceptTradeOpcode(WorldPacket& /*recvPacket*/)
     {
         if (Item* item = my_trade->GetItem(TradeSlots(i)))
         {
-            if (!item->CanBeTraded(false, true))
+            if (!item->CanBeTraded(false, true) || _player->IsXorWoWItemLocked(item))   // XorWoW: item lock
             {
                 info.Status = TRADE_STATUS_TRADE_CANCELED;
                 SendTradeStatus(info);
@@ -322,7 +322,7 @@ void WorldSession::HandleAcceptTradeOpcode(WorldPacket& /*recvPacket*/)
 
         if (Item* item = his_trade->GetItem(TradeSlots(i)))
         {
-            if (!item->CanBeTraded(false, true))
+            if (!item->CanBeTraded(false, true) || trader->IsXorWoWItemLocked(item, false))   // XorWoW: item lock
             {
                 info.Status = TRADE_STATUS_TRADE_CANCELED;
                 SendTradeStatus(info);
@@ -899,6 +899,11 @@ void WorldSession::HandleSetTradeItemOpcode(WorldPacket& recvPacket)
         SendTradeStatus(info);
         return;
     }
+
+    // XorWoW: a locked item stays out of the trade (the slot stays empty, the trade goes on); the
+    // "will not be traded" slot is fine, the item does not change hands there
+    if (tradeSlot != TRADE_SLOT_NONTRADED && _player->IsXorWoWItemLocked(item))
+        return;
 
     ObjectGuid iGUID = item->GetGUID();
 

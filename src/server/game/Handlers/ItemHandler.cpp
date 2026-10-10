@@ -307,6 +307,12 @@ void WorldSession::HandleDestroyItemOpcode(WorldPackets::Item::DestroyItem& pack
         return;
     }
 
+    if (_player->IsXorWoWItemLocked(pItem))   // XorWoW: item lock
+    {
+        _player->SendEquipError(EQUIP_ERR_ITEM_LOCKED, pItem, nullptr);
+        return;
+    }
+
     recoveryItem(pItem);
 
     if (packet.Count)
@@ -1237,6 +1243,10 @@ void WorldSession::HandleSocketOpcode(WorldPackets::Item::SocketGems& packet)
     for (int i = 0; i < MAX_GEM_SOCKETS; ++i)
         Gems[i] = packet.GemGuids[i] ? _player->GetItemByGuid(packet.GemGuids[i]) : nullptr;
 
+    for (int i = 0; i < MAX_GEM_SOCKETS; ++i)                // XorWoW: a locked gem stays in the bags
+        if (_player->IsXorWoWItemLocked(Gems[i]))
+            return;
+
     GemPropertiesEntry const* GemProps[MAX_GEM_SOCKETS];
     for (int i = 0; i < MAX_GEM_SOCKETS; ++i)                //get geminfo from dbc storage
         GemProps[i] = (Gems[i]) ? sGemPropertiesStore.LookupEntry(Gems[i]->GetTemplate()->GemProperties) : nullptr;
@@ -1448,6 +1458,9 @@ void WorldSession::HandleItemRefund(WorldPackets::Item::ItemRefund& packet)
 
     // Don't try to refund item currently being disenchanted
     if (_player->GetLootGUID() == packet.ItemGuid)
+        return;
+
+    if (_player->IsXorWoWItemLocked(item))   // XorWoW: item lock
         return;
 
     GetPlayer()->RefundItem(item);

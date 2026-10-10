@@ -253,6 +253,12 @@ void WorldSession::HandleSendMail(WorldPacket& recvData)
             return;
         }
 
+        if (player->IsXorWoWItemLocked(item))   // XorWoW: item lock
+        {
+            player->SendMailResult(0, MAIL_SEND, MAIL_ERR_EQUIP_ERROR, EQUIP_ERR_ITEM_LOCKED);
+            return;
+        }
+
         if (!item->CanBeTraded(true))
         {
             player->SendMailResult(0, MAIL_SEND, MAIL_ERR_EQUIP_ERROR, EQUIP_ERR_MAIL_BOUND_ITEM);

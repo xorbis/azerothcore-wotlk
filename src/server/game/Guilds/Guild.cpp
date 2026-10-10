@@ -772,6 +772,12 @@ bool Guild::PlayerMoveItemData::InitItem()
             m_pPlayer->SendEquipError(EQUIP_ERR_CAN_ONLY_DO_WITH_EMPTY_BAGS, m_pItem);
             m_pItem = nullptr;
         }
+        // XorWoW: locked items stay with the player
+        else if (m_pPlayer->IsXorWoWItemLocked(m_pItem))
+        {
+            m_pPlayer->SendEquipError(EQUIP_ERR_ITEM_LOCKED, m_pItem);
+            m_pItem = nullptr;
+        }
         // Bound items cannot be put into bank.
         else if (!m_pItem->CanBeTraded())
         {

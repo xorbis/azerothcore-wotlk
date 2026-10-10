@@ -7844,6 +7844,9 @@ SpellCastResult Spell::CheckItems(uint32* param1, uint32* param2)
                     if (m_targets.GetItemTarget()->GetOwnerGUID() != unitCaster->GetGUID())
                         return SPELL_FAILED_CANT_BE_DISENCHANTED;
 
+                    if (player && player->IsXorWoWItemLocked(m_targets.GetItemTarget()))   // XorWoW: item lock
+                        return SPELL_FAILED_CANT_BE_DISENCHANTED;
+
                     ItemTemplate const* itemProto = m_targets.GetItemTarget()->GetTemplate();
                     if (!itemProto)
                         return SPELL_FAILED_CANT_BE_DISENCHANTED;
@@ -7867,6 +7870,8 @@ SpellCastResult Spell::CheckItems(uint32* param1, uint32* param2)
                 {
                     Item* item = m_targets.GetItemTarget();
                     if (!item)
+                        return SPELL_FAILED_CANT_BE_PROSPECTED;
+                    if (player && player->IsXorWoWItemLocked(item))   // XorWoW: item lock
                         return SPELL_FAILED_CANT_BE_PROSPECTED;
                     //ensure item is a prospectable ore
                     if (!(item->GetTemplate()->HasFlag(ITEM_FLAG_IS_PROSPECTABLE)))
@@ -7898,6 +7903,8 @@ SpellCastResult Spell::CheckItems(uint32* param1, uint32* param2)
                 {
                     Item* item = m_targets.GetItemTarget();
                     if (!item)
+                        return SPELL_FAILED_CANT_BE_MILLED;
+                    if (player && player->IsXorWoWItemLocked(item))   // XorWoW: item lock
                         return SPELL_FAILED_CANT_BE_MILLED;
                     //ensure item is a millable herb
                     if (!(item->GetTemplate()->HasFlag(ITEM_FLAG_IS_MILLABLE)))

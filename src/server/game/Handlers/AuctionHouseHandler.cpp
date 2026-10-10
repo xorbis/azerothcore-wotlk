@@ -213,6 +213,12 @@ void WorldSession::HandleAuctionSellItem(WorldPacket& recvData)
         if (itemEntry == 0)
             itemEntry = item->GetTemplate()->ItemId;
 
+        if (_player->IsXorWoWItemLocked(item))   // XorWoW: item lock
+        {
+            SendAuctionCommandResult(0, AUCTION_SELL_ITEM, ERR_AUCTION_ITEM_NOT_FOUND);
+            return;
+        }
+
         if (sAuctionMgr->GetAItem(item->GetGUID()) || !item->CanBeTraded() || item->IsNotEmptyBag() ||
                 item->GetTemplate()->HasFlag(ITEM_FLAG_CONJURED) || item->GetUInt32Value(ITEM_FIELD_DURATION) ||
                 item->GetCount() < count[i] || itemEntry != item->GetTemplate()->ItemId)
