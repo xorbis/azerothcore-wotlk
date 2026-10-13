@@ -2454,6 +2454,17 @@ bool AchievementMgr::HasAchieved(uint32 achievementId) const
     return _completedAchievements.find(achievementId) != _completedAchievements.end();
 }
 
+void AchievementMgr::SetScriptedCriteriaProgress(AchievementCriteriaEntry const* entry, uint32 value)
+{
+    AchievementEntry const* achievement = sAchievementMgr->GetAchievement(entry->referredAchievement);
+    if (!value || !achievement || !CanUpdateCriteria(entry, achievement))
+        return;
+
+    SetCriteriaProgress(entry, value, PROGRESS_HIGHEST);
+    if (IsCompletedCriteria(entry, achievement))
+        CompletedCriteriaFor(achievement);
+}
+
 bool AchievementMgr::CanUpdateCriteria(AchievementCriteriaEntry const* criteria, AchievementEntry const* achievement)
 {
     if (sDisableMgr->IsDisabledFor(DISABLE_TYPE_ACHIEVEMENT_CRITERIA, criteria->ID, nullptr))

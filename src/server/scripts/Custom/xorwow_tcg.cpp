@@ -24,6 +24,12 @@
  * A player who leaves duel range, dies, teleports, changes zone or logs out during a game loses it
  * (counted as "fled" in the record) and the winner still takes the stakes.
  *
+ * Achievements: the "XorWoW TCG" category of the achievement window (rows from
+ * scripts\client-patch\gen_tcg_achievements.py). Each criteria waits on a spell nobody casts
+ * (type 28, spell 269000 + Stat); its count is kept here per account (the record, the streak, the
+ * collection and one bit per feat) and set on the character playing, so every character of the
+ * account earns them, at the latest when its addon says hello.
+ *
  * Protocol: addon messages, prefix "XorWoW", body "TCG;<command>;...", whispered by the addon to
  * its own player and swallowed here; the answers are addon whispers to the player. The chat hook,
  * the logout and death hooks and the card spell only queue events: everything is done in the
@@ -31,6 +37,7 @@
  */
 
 #include "AccountMgr.h"
+#include "AchievementMgr.h"
 #include "Chat.h"
 #include "Containers.h"
 #include "DBCStores.h"
@@ -76,6 +83,9 @@ namespace
     constexpr uint32 HISTORY_SHOWN = 10;
     constexpr uint32 SUDDEN_DEATH_ROUNDS = 3;
     constexpr float RANGE_SLACK = 3.0f;      // a step past duel range is still fine mid-game
+    constexpr uint32 ACHIEVEMENT_SPELL_BASE = 269000;
+    constexpr uint32 UNDERDOG_GAP = 20;      // deck strength (average tier x 10) the winner was behind by
+    constexpr uint32 CLEAN_SWEEP_CARDS = 5;
 
     enum Rules : uint32
     {
@@ -101,6 +111,34 @@ namespace
         RESULT_DRAW = 2,
         RESULT_FLED = 3,
         RESULT_OPPONENT_FLED = 4,
+    };
+
+    // What the achievements count: criteria spell 269000 + stat.
+    enum Stat : uint32
+    {
+        STAT_GAMES         = 1,
+        STAT_WINS          = 2,
+        STAT_BEST_STREAK   = 3,
+        STAT_CARDS_WON     = 4,     // by betting
+        STAT_CARDS_OWNED   = 5,     // different cards
+        STAT_CLASSIC_OWNED = 6,     // different classic cards
+        STAT_FEAT          = 50,    // + Feat: 1 once done
+    };
+
+    enum Feat : uint32
+    {
+        FEAT_SAME         = 0,
+        FEAT_PLUS         = 1,
+        FEAT_COMBO        = 2,
+        FEAT_SAME_WALL    = 3,
+        FEAT_PERFECT      = 4,      // won with all nine cards of the board
+        FEAT_SUDDEN_DEATH = 5,      // won in a Sudden Death round
+        FEAT_UNDERDOG     = 6,      // won with a deck weaker by UNDERDOG_GAP
+        FEAT_CLEAN_SWEEP  = 7,      // took CLEAN_SWEEP_CARDS cards in one game
+        FEAT_RARE         = 8,      // owned a card of tier 5+ (rare quality)
+        FEAT_EPIC         = 9,      // tier 7+
+        FEAT_LEGENDARY    = 10,     // tier 9+
+        FEAT_COUNT
     };
 
     struct Card
@@ -140,6 +178,7 @@ namespace
         std::array<uint16, MAX_CARD + 1> counts{};
         std::array<uint32, HAND> deck{};
         uint32 wins = 0, losses = 0, draws = 0, fled = 0, cardsWon = 0, cardsLost = 0;
+        uint32 streak = 0, bestStreak = 0, feats = 0;
     };
 
     std::unordered_map<uint32, Account> accounts;
@@ -154,8 +193,9 @@ namespace
 
     void SaveAccount(uint32 accountId, Account const& a)
     {
-        CharacterDatabase.DirectExecute("REPLACE INTO `xorwow_tcg_account` (`account`, `deck`, `wins`, `losses`, `draws`, `fled`, `cards_won`, `cards_lost`) "
-            "VALUES ({}, '{}', {}, {}, {}, {}, {}, {})", accountId, DeckString(a), a.wins, a.losses, a.draws, a.fled, a.cardsWon, a.cardsLost);
+        CharacterDatabase.DirectExecute("REPLACE INTO `xorwow_tcg_account` (`account`, `deck`, `wins`, `losses`, `draws`, `fled`, `cards_won`, `cards_lost`, "
+            "`streak`, `best_streak`, `feats`) VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {})", accountId, DeckString(a), a.wins, a.losses,
+            a.draws, a.fled, a.cardsWon, a.cardsLost, a.streak, a.bestStreak, a.feats);
     }
 
     void SaveCount(uint32 accountId, Account const& a, uint32 card)
@@ -198,8 +238,8 @@ namespace
             } while (result->NextRow());
         }
 
-        if (QueryResult result = CharacterDatabase.Query("SELECT `deck`, `wins`, `losses`, `draws`, `fled`, `cards_won`, `cards_lost` "
-            "FROM `xorwow_tcg_account` WHERE `account` = {}", accountId))
+        if (QueryResult result = CharacterDatabase.Query("SELECT `deck`, `wins`, `losses`, `draws`, `fled`, `cards_won`, `cards_lost`, "
+            "`streak`, `best_streak`, `feats` FROM `xorwow_tcg_account` WHERE `account` = {}", accountId))
         {
             Field* f = result->Fetch();
             uint32 i = 0;
@@ -213,6 +253,9 @@ namespace
             a.fled = f[4].Get<uint32>();
             a.cardsWon = f[5].Get<uint32>();
             a.cardsLost = f[6].Get<uint32>();
+            a.streak = f[7].Get<uint32>();
+            a.bestStreak = f[8].Get<uint32>();
+            a.feats = f[9].Get<uint32>();
             // a deck saved before lost cards left it
             if (PruneDeck(a))
                 SaveAccount(accountId, a);
@@ -270,6 +313,63 @@ namespace
             if (Card const* card = GetCard(id))
                 sum += card->tier;
         return sum * 10 / HAND;
+    }
+
+    // --- achievements -----------------------------------------------------------------------------
+
+    std::vector<std::pair<AchievementCriteriaEntry const*, uint32>> achievementCriteria;   // with its Stat
+
+    void LoadAchievementCriteria()
+    {
+        achievementCriteria.clear();
+        for (uint32 i = 0; i < sAchievementCriteriaStore.GetNumRows(); ++i)
+            if (AchievementCriteriaEntry const* c = sAchievementCriteriaStore.LookupEntry(i))
+                if (c->requiredType == ACHIEVEMENT_CRITERIA_TYPE_BE_SPELL_TARGET && c->be_spell_target.spellID > ACHIEVEMENT_SPELL_BASE
+                    && c->be_spell_target.spellID < ACHIEVEMENT_SPELL_BASE + STAT_FEAT + FEAT_COUNT)
+                    achievementCriteria.emplace_back(c, c->be_spell_target.spellID - ACHIEVEMENT_SPELL_BASE);
+    }
+
+    uint32 StatValue(Account const& a, uint32 stat)
+    {
+        if (stat >= STAT_FEAT)
+            return (a.feats >> (stat - STAT_FEAT)) & 1;
+        uint32 owned = 0, classic = 0;
+        switch (stat)
+        {
+            case STAT_GAMES: return a.wins + a.losses + a.draws;
+            case STAT_WINS: return a.wins;
+            case STAT_BEST_STREAK: return a.bestStreak;
+            case STAT_CARDS_WON: return a.cardsWon;
+            case STAT_CARDS_OWNED:
+            case STAT_CLASSIC_OWNED:
+                for (Card const& card : cards)
+                    if (card.id && a.counts[card.id])
+                    {
+                        ++owned;
+                        classic += card.era == 0;
+                    }
+                return stat == STAT_CARDS_OWNED ? owned : classic;
+            default: return 0;
+        }
+    }
+
+    // Brings the character's achievements up to the account's counts. Owning a card of a quality
+    // is remembered as a feat, so losing the card later does not take the achievement back.
+    void SyncAchievements(Player* player, uint32 accountId, Account& a)
+    {
+        uint32 feats = a.feats;
+        for (Card const& card : cards)
+            if (card.id && a.counts[card.id])
+                feats |= (card.tier >= 5 ? 1u << FEAT_RARE : 0) | (card.tier >= 7 ? 1u << FEAT_EPIC : 0) | (card.tier >= 9 ? 1u << FEAT_LEGENDARY : 0);
+        if (feats != a.feats)
+        {
+            a.feats = feats;
+            SaveAccount(accountId, a);
+        }
+        if (!player || !player->IsInWorld())
+            return;
+        for (auto const& [criteria, stat] : achievementCriteria)
+            player->GetAchievementMgr()->SetScriptedCriteriaProgress(criteria, StatValue(a, stat));
     }
 
     // --- messages ---------------------------------------------------------------------------------
@@ -388,6 +488,7 @@ namespace
         std::vector<uint32> taken;
         std::array<Result, 2> results{};
         std::array<uint32, 2> scores{};
+        std::array<uint32, 2> feats{};      // feats done this game, not given yet
     };
 
     struct Challenge
@@ -567,7 +668,7 @@ namespace
         // Same and Plus, on the printed numbers
         std::vector<uint32> special;
         std::vector<int> sameHits;
-        uint32 sameCount = 0;
+        uint32 sameCount = 0, wallCount = 0;
         std::map<uint32, std::vector<int>> sums;
         for (uint32 side = 0; side < 4; ++side)
         {
@@ -576,7 +677,10 @@ namespace
             if (n < 0)
             {
                 if ((g.rules & RULE_SAME) && (g.rules & RULE_SAME_WALL) && mine == 10)
+                {
                     ++sameCount;
+                    ++wallCount;
+                }
                 continue;
             }
             if (!g.board[n].card)
@@ -593,6 +697,9 @@ namespace
         {
             if (g.board[n].seat == seat)
                 return;
+            g.feats[seat] |= 1u << (cause == 'P' ? FEAT_PLUS : FEAT_SAME);
+            if (cause == 'S' && wallCount)
+                g.feats[seat] |= 1u << FEAT_SAME_WALL;
             g.board[n].seat = seat;
             events.push_back(Acore::StringFormat("F:{}:{}:{}", n + 1, seat, cause));
             special.push_back(uint32(n));
@@ -616,6 +723,8 @@ namespace
             queue.pop_front();
             std::vector<uint32> more;
             Capture(g, from, 'C', events, &more);
+            if (!more.empty())
+                g.feats[seat] |= 1u << FEAT_COMBO;
             queue.insert(queue.end(), more.begin(), more.end());
         }
         return events;
@@ -639,6 +748,20 @@ namespace
         playerGame.erase(g.seats[1].guid);
     }
 
+    // The game's feats so far go to the seat's account, and its character's achievements are updated.
+    void GiveFeats(Game& g, uint8 seat)
+    {
+        Seat const& s = g.seats[seat];
+        Account& a = GetAccount(s.account);
+        if ((a.feats | g.feats[seat]) != a.feats)
+        {
+            a.feats |= g.feats[seat];
+            SaveAccount(s.account, a);
+        }
+        g.feats[seat] = 0;
+        SyncAchievements(SeatPlayer(g, seat), s.account, a);
+    }
+
     void CountResult(Game const& g, uint8 seat, Result result)
     {
         Seat const& s = g.seats[seat];
@@ -650,6 +773,10 @@ namespace
             case RESULT_FLED: ++a.losses; ++a.fled; break;
             default: ++a.draws; break;
         }
+        if (result == RESULT_WIN || result == RESULT_OPPONENT_FLED)
+            a.bestStreak = std::max(a.bestStreak, ++a.streak);
+        else
+            a.streak = 0;
         SaveAccount(s.account, a);
     }
 
@@ -682,9 +809,14 @@ namespace
                 stakes = (s == g.winner ? "Won " : "Lost ") + cardsMoved;
             WriteHistory(g, s, g.results[s], g.scores[s], g.scores[1 - s], stakes);
         }
+        if (g.taken.size() >= CLEAN_SWEEP_CARDS)
+            g.feats[g.winner] |= 1u << FEAT_CLEAN_SWEEP;
         for (uint8 s = 0; s < 2; ++s)
+        {
+            GiveFeats(g, s);
             if (Player* p = SeatPlayer(g, s))
                 SendStats(p, g.seats[s].account, GetAccount(g.seats[s].account));
+        }
         Release(g);
         uint32 id = g.id;   // g is the map's element: erase by a copy of its key
         games.erase(id);
@@ -747,6 +879,18 @@ namespace
             CountResult(g, s, r);
             Send(SeatPlayer(g, s), Acore::StringFormat("END;{};{};{};{};{};{};{}", g.id, winner < 0 ? "D" : winner == s ? "W" : "L",
                 score[s], score[1 - s], fledSeat < 0 ? "" : g.seats[fledSeat].name, uint32(r), why));
+        }
+
+        // feats of a game won at the board, not by the other one leaving
+        if (winner >= 0 && fledSeat < 0)
+        {
+            uint8 w = uint8(winner);
+            if (std::all_of(g.board.begin(), g.board.end(), [w](Cell const& c) { return c.card && c.seat == w; }))
+                g.feats[w] |= 1u << FEAT_PERFECT;
+            if (g.round > 1)
+                g.feats[w] |= 1u << FEAT_SUDDEN_DEATH;
+            if (DeckStrength(g.seats[w].deck) + UNDERDOG_GAP <= DeckStrength(g.seats[1 - w].deck))
+                g.feats[w] |= 1u << FEAT_UNDERDOG;
         }
 
         if (winner < 0 || g.stake == STAKE_NONE)
@@ -817,6 +961,8 @@ namespace
         for (std::string const& e : events)
             ev += (ev.empty() ? "" : ",") + e;
         SendBoth(g, Acore::StringFormat("MOVE;{};{};{};{};{};{}", g.id, seat, handIndex + 1, g.board[cell].card, cell + 1, ev));
+        if (g.feats[seat])
+            GiveFeats(g, seat);
         ++g.placed;
         if (g.placed >= 9)
         {
@@ -862,6 +1008,7 @@ namespace
         SendCollection(player, a);
         SendDeck(player, a);
         SendStats(player, accountId, a);
+        SyncAchievements(player, accountId, a);
         if (starter)
             Notice(player, "Welcome to XorWoW TCG! Your starter deck is ready: open the collection from the minimap button.");
     }
@@ -1173,6 +1320,7 @@ namespace
                     SaveCount(accountId, a, card->id);
                     SendCard(p, a, card->id);
                     Notice(p, Acore::StringFormat("{} added to your collection ({} owned).", card->name, a.counts[card->id]));
+                    SyncAchievements(p, accountId, a);
                     break;
                 }
             }
@@ -1262,7 +1410,9 @@ namespace
         if (SpellInfo const* duel = sSpellMgr->GetSpellInfo(DUEL_SPELL))
             if (float range = std::max(duel->GetMaxRange(true), duel->GetMaxRange(false)))
                 duelRange = range;
-        LOG_INFO("server.loading", ">> XorWoW TCG: {} cards, duel range {} yards, open up to era {}", cards.size() - 1, duelRange, OpenEra());
+        LoadAchievementCriteria();
+        LOG_INFO("server.loading", ">> XorWoW TCG: {} cards, duel range {} yards, open up to era {}, {} achievement criteria", cards.size() - 1,
+            duelRange, OpenEra(), achievementCriteria.size());
     }
 }
 

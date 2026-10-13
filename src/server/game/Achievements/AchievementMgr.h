@@ -301,6 +301,8 @@ public:
     void SaveToDB(CharacterDatabaseTransaction trans);
     void ResetAchievementCriteria(AchievementCriteriaCondition condition, uint32 value, bool evenIfCriteriaComplete = false);
     void UpdateAchievementCriteria(AchievementCriteriaTypes type, uint32 miscValue1 = 0, uint32 miscValue2 = 0, Unit* unit = nullptr);
+    // XorWoW: a criteria whose count a script keeps itself (XorWoW TCG, per account) is set to it, never lowered
+    void SetScriptedCriteriaProgress(AchievementCriteriaEntry const* entry, uint32 value);
     void CompletedAchievement(AchievementEntry const* entry);
     void CheckAllAchievementCriteria();
     void SendAllAchievementData() const;
