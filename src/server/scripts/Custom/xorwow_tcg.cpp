@@ -22,14 +22,16 @@
  * and at most two of tier 7 or more; a valid deck is needed to challenge and to accept.
  *
  * A player who leaves duel range, dies, teleports, changes zone or logs out during a game loses it
- * (counted as "fled" in the record) and the winner still takes the stakes.
+ * (counted as "fled" in the record) and the winner still takes the stakes. Leaving FLEE_LIMIT games
+ * in one day (server time, games against bots too) bars the account from XorWoW TCG for
+ * FLEE_BAN_DAYS days. An account plays the same bot at most BOT_DAILY_GAMES times a day.
  *
  * Bots: the world's bots (not the alts played by the bot AI) take any challenge at once. The server
  * plays for them: each bot has a strategy for good (Bad, Poor, Medium, Strong, Perfect, table
  * xorwow_tcg_bot, rolled once per bot character) that sets how often it plays a move other than the
  * best one it found, and it builds a deck from every open card whose tiers add up as close as
- * possible to the challenger's deck. Bots never see a face-down hand. Bot games have no stakes, do not
- * count for the achievements and keep their own record and history (the stats' Bots tab).
+ * possible to the challenger's deck. Bots never see a face-down hand. Bot games have no stakes, only
+ * count for the achievements for beating each strategy and keep their own record and history.
  *
  * A win (at the board or by the other one leaving) gives WIN_XP experience, or at the level cap
  * its worth in money the way quests convert it (6 copper per point).
@@ -65,7 +67,9 @@
 #include "SpellScriptLoader.h"
 #include "StringConvert.h"
 #include "StringFormat.h"
+#include "Timer.h"
 #include "Tokenize.h"
+#include "Util.h"
 #include "World.h"
 #include "WorldPacket.h"
 
@@ -102,6 +106,9 @@ namespace
     constexpr uint32 SEARCH_BUDGET = 60000;  // positions a bot looks at for one move
     constexpr uint32 WIN_XP = 1000;
     constexpr uint32 XP_COPPER = 6;          // a quest's XP turned into money at the level cap
+    constexpr uint32 FLEE_LIMIT = 3;         // games left in one day ...
+    constexpr uint32 FLEE_BAN_DAYS = 3;      // ... bar the account for this long
+    constexpr uint32 BOT_DAILY_GAMES = 3;    // games a day an account may play against the same bot
 
     enum Rules : uint32
     {
@@ -154,6 +161,11 @@ namespace
         FEAT_RARE         = 8,      // owned a card of tier 5+ (rare quality)
         FEAT_EPIC         = 9,      // tier 7+
         FEAT_LEGENDARY    = 10,     // tier 9+
+        FEAT_BEAT_BAD     = 11,     // won at the board against a bot of each strategy (+ Strategy)
+        FEAT_BEAT_POOR    = 12,
+        FEAT_BEAT_MEDIUM  = 13,
+        FEAT_BEAT_STRONG  = 14,
+        FEAT_BEAT_PERFECT = 15,
         FEAT_COUNT
     };
 
@@ -210,6 +222,8 @@ namespace
         uint32 wins = 0, losses = 0, draws = 0, fled = 0, cardsWon = 0, cardsLost = 0;
         uint32 streak = 0, bestStreak = 0, feats = 0;
         uint32 botWins = 0, botLosses = 0, botDraws = 0, botFled = 0;   // games against bots, apart
+        uint32 bannedUntil = 0;         // barred from playing for leaving games, until then
+        bool banShown = false;          // the ban was explained this server run
     };
 
     std::unordered_map<uint32, Account> accounts;
@@ -225,9 +239,9 @@ namespace
     void SaveAccount(uint32 accountId, Account const& a)
     {
         CharacterDatabase.DirectExecute("REPLACE INTO `xorwow_tcg_account` (`account`, `deck`, `wins`, `losses`, `draws`, `fled`, `cards_won`, `cards_lost`, "
-            "`streak`, `best_streak`, `feats`, `bot_wins`, `bot_losses`, `bot_draws`, `bot_fled`) VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+            "`streak`, `best_streak`, `feats`, `bot_wins`, `bot_losses`, `bot_draws`, `bot_fled`, `banned_until`) VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
             accountId, DeckString(a), a.wins, a.losses, a.draws, a.fled, a.cardsWon, a.cardsLost, a.streak, a.bestStreak, a.feats,
-            a.botWins, a.botLosses, a.botDraws, a.botFled);
+            a.botWins, a.botLosses, a.botDraws, a.botFled, a.bannedUntil);
     }
 
     void SaveCount(uint32 accountId, Account const& a, uint32 card)
@@ -271,7 +285,7 @@ namespace
         }
 
         if (QueryResult result = CharacterDatabase.Query("SELECT `deck`, `wins`, `losses`, `draws`, `fled`, `cards_won`, `cards_lost`, "
-            "`streak`, `best_streak`, `feats`, `bot_wins`, `bot_losses`, `bot_draws`, `bot_fled` FROM `xorwow_tcg_account` WHERE `account` = {}", accountId))
+            "`streak`, `best_streak`, `feats`, `bot_wins`, `bot_losses`, `bot_draws`, `bot_fled`, `banned_until` FROM `xorwow_tcg_account` WHERE `account` = {}", accountId))
         {
             Field* f = result->Fetch();
             uint32 i = 0;
@@ -292,6 +306,7 @@ namespace
             a.botLosses = f[11].Get<uint32>();
             a.botDraws = f[12].Get<uint32>();
             a.botFled = f[13].Get<uint32>();
+            a.bannedUntil = f[14].Get<uint32>();
             // a deck saved before lost cards left it
             if (PruneDeck(a))
                 SaveAccount(accountId, a);
@@ -433,6 +448,19 @@ namespace
     void SendError(Player* player, std::string const& text)
     {
         Send(player, "ERR;" + text);
+    }
+
+    // Seconds the account is still barred from playing, 0 when it may play.
+    uint32 BanLeft(Account const& a)
+    {
+        uint32 now = uint32(GameTime::GetGameTime().count());
+        return a.bannedUntil > now ? a.bannedUntil - now : 0;
+    }
+
+    std::string BanText(Account const& a)
+    {
+        return Acore::StringFormat("You left {} XorWoW TCG games in one day, so you cannot play XorWoW TCG for {} days. Time left: {}.",
+            FLEE_LIMIT, FLEE_BAN_DAYS, secsToTimeString(BanLeft(a)));
     }
 
     void SendCollection(Player* player, Account const& a)
@@ -809,11 +837,13 @@ namespace
     // The game's feats so far go to the seat's account, and its character's achievements are updated.
     void GiveFeats(Game& g, uint8 seat)
     {
-        if (g.vsBot)
+        if (g.seats[seat].bot)
         {
-            g.feats[seat] = 0;   // bot games earn no achievements
+            g.feats[seat] = 0;
             return;
         }
+        if (g.vsBot)   // a bot game earns only the achievement for beating that bot's strategy
+            g.feats[seat] &= ((1u << (FEAT_BEAT_PERFECT + 1)) - 1) & ~((1u << FEAT_BEAT_BAD) - 1);
         Seat const& s = g.seats[seat];
         Account& a = GetAccount(s.account);
         if ((a.feats | g.feats[seat]) != a.feats)
@@ -853,6 +883,26 @@ namespace
         Notice(player, Acore::StringFormat("You receive {} for the win.", MoneyText(money)));
     }
 
+    // A game left: the FLEE_LIMIT-th of the day (this one's history row is not written yet) bars
+    // the account for FLEE_BAN_DAYS days.
+    void CountFlee(Game const& g, uint8 seat, Account& a)
+    {
+        uint32 dayStart = uint32(Acore::Time::GetLocalHourTimestamp(Now(), 0, false));
+        uint32 today = 1;
+        if (QueryResult result = CharacterDatabase.Query("SELECT COUNT(*) FROM `xorwow_tcg_history` WHERE `account` = {} AND `result` = {} AND `time` >= {}",
+            g.seats[seat].account, uint32(RESULT_FLED), dayStart))
+            today += (*result)[0].Get<uint32>();
+        if (today < FLEE_LIMIT || BanLeft(a))
+            return;
+        a.bannedUntil = uint32(Now()) + FLEE_BAN_DAYS * DAY;
+        a.banShown = false;
+        if (Player* p = SeatPlayer(g, seat))
+        {
+            SendError(p, BanText(a));
+            a.banShown = true;
+        }
+    }
+
     void CountResult(Game const& g, uint8 seat, Result result)
     {
         Seat const& s = g.seats[seat];
@@ -861,6 +911,8 @@ namespace
         if (result == RESULT_WIN || result == RESULT_OPPONENT_FLED)
             RewardWin(SeatPlayer(g, seat));
         Account& a = GetAccount(s.account);
+        if (result == RESULT_FLED)
+            CountFlee(g, seat, a);
         if (g.vsBot)
         {
             // against a bot: its own record, and the streak is left alone
@@ -1004,6 +1056,8 @@ namespace
                 g.feats[w] |= 1u << FEAT_SUDDEN_DEATH;
             if (DeckStrength(g.seats[w].deck) + UNDERDOG_GAP <= DeckStrength(g.seats[1 - w].deck))
                 g.feats[w] |= 1u << FEAT_UNDERDOG;
+            if (g.seats[1 - w].bot)
+                g.feats[w] |= 1u << (FEAT_BEAT_BAD + g.seats[1 - w].strategy);
         }
 
         if (winner < 0 || g.stake == STAKE_NONE)
@@ -1360,10 +1414,26 @@ namespace
         Play(g, me, m.hand, m.cell);
     }
 
+    // Games the account may still play against this bot today (the bot is known by its name in the history).
+    uint32 BotGamesLeft(uint32 accountId, Player* bot)
+    {
+        std::string name = bot->GetName();
+        CharacterDatabase.EscapeString(name);
+        uint32 dayStart = uint32(Acore::Time::GetLocalHourTimestamp(Now(), 0, false));
+        uint32 played = 0;
+        if (QueryResult result = CharacterDatabase.Query("SELECT COUNT(*) FROM `xorwow_tcg_history` WHERE `account` = {} AND `bot` > 0 AND `opponent` = '{}' AND `time` >= {}",
+            accountId, name, dayStart))
+            played = (*result)[0].Get<uint32>();
+        return played < BOT_DAILY_GAMES ? BOT_DAILY_GAMES - played : 0;
+    }
+
     // A challenge to one of the world's bots: it accepts at once, stops where it stands and plays
     // with a deck built to match the challenger's.
     void StartBotGame(Player* player, Player* bot, uint32 rules, uint32 stake)
     {
+        if (!BotGamesLeft(player->GetSession()->GetAccountId(), bot))
+            return SendError(player, Acore::StringFormat("You already played {} {} times today. Challenge another bot, or {} again tomorrow.",
+                bot->GetName(), BOT_DAILY_GAMES, bot->GetName()));
         Account& mine = GetAccount(player->GetSession()->GetAccountId());
         std::array<uint32, HAND> botDeck = BuildBotDeck(DeckTierSum(mine.deck));
         if (!GetCard(botDeck[0]))
@@ -1440,6 +1510,11 @@ namespace
         SyncAchievements(player, accountId, a);
         if (starter)
             Notice(player, "Welcome to XorWoW TCG! Your starter deck is ready: open the collection from the minimap button.");
+        if (BanLeft(a) && !a.banShown)
+        {
+            SendError(player, BanText(a));   // barred while away (it logged out of its last game)
+            a.banShown = true;
+        }
     }
 
     void HandleDeck(Player* player, std::vector<std::string_view> const& args)
@@ -1474,6 +1549,8 @@ namespace
             if (c.from == player->GetGUID() || c.to == player->GetGUID())
                 return SendError(player, "You already have a challenge waiting.");
         Account& mine = GetAccount(player->GetSession()->GetAccountId());
+        if (BanLeft(mine))
+            return SendError(player, BanText(mine));
         std::string problem = DeckProblem(mine, mine.deck);
         if (!problem.empty())
             return SendError(player, problem + " Fix your deck in the collection window first.");
@@ -1493,6 +1570,8 @@ namespace
             if (c.from == target->GetGUID() || c.to == target->GetGUID())
                 return SendError(player, target->GetName() + " is answering another challenge.");
         Account& theirs = GetAccount(target->GetSession()->GetAccountId());
+        if (BanLeft(theirs))
+            return SendError(player, Acore::StringFormat("{} cannot play XorWoW TCG right now (barred for leaving games).", target->GetName()));
         if (!DeckProblem(theirs, theirs.deck).empty())
             return SendError(player, target->GetName() + " does not have a valid deck.");
 
@@ -1544,6 +1623,13 @@ namespace
             return CloseChallenge(c, "too far apart");
         Account& fa = GetAccount(from->GetSession()->GetAccountId());
         Account& ta = GetAccount(player->GetSession()->GetAccountId());
+        if (BanLeft(ta))
+        {
+            SendError(player, BanText(ta));
+            return CloseChallenge(c, player->GetName() + " cannot play right now");
+        }
+        if (BanLeft(fa))
+            return CloseChallenge(c, from->GetName() + " cannot play right now");
         if (!DeckProblem(fa, fa.deck).empty() || !DeckProblem(ta, ta.deck).empty())
             return CloseChallenge(c, "a deck is no longer valid");
         challenges.erase(id);

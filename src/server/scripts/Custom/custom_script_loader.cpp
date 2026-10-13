@@ -29,6 +29,7 @@ void AddSC_xorwow_guild_hall_offering();   // Golden Offering: the guild hall's 
 void AddSC_xorwow_guild_epic_loot();   // guild chat announces a guild member's epic loot
 void AddSC_xorwow_account_professions();   // gathering and secondary professions are account-bound
 void AddSC_xorwow_tcg();   // XorWoW TCG: the card game's referee, collections, decks and bets
+void AddSC_xorwow_tcg_vendor();   // the guild hall Card Vendor's 15 cards of the day
 void AddSC_xorwow_unit_marks();   // the XorWoW addon's bot, altbot and card drop marks on name plates and tooltips
 void AddSC_xorwow_item_lock();   // items locked in the bags or bank cannot be sold to a vendor
 
@@ -49,6 +50,7 @@ void AddCustomScripts()
     AddSC_xorwow_guild_epic_loot();
     AddSC_xorwow_account_professions();
     AddSC_xorwow_tcg();
+    AddSC_xorwow_tcg_vendor();
     AddSC_xorwow_unit_marks();
     AddSC_xorwow_item_lock();
 }
