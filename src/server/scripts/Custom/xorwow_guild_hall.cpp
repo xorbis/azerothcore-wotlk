@@ -6,6 +6,10 @@
  *   0 Dalaran Sewers (617) as 725/726, the default
  *   1 Nagrand Arena (559) as 727/728
  *   2 Violet Hold (608) as 729/730
+ *   3 Island of Dr Lapidis as 731/732 and 4 Gillijim's Isle as 733/734: islands of their own
+ *     (client-patch\maps\gillijim-lapidis, two Noggit islands off Stranglethorn by "Nicolas" on
+ *     wowmodding.net, file 131), in open sea out to the edge of the map; whoever swims out past
+ *     the hall's bounds is brought back to the entrance
  * The maps come from the client patch (Patch-Z.MPQ: Map, MapDifficulty, AreaTable, Light rows; every
  * hall shows the guild hall loading screens 255/256) and scripts\build-patch.ps1 (the server's
  * terrain/collision/pathing files under the new ids); the world rows are
@@ -78,6 +82,8 @@ namespace
         uint32 mapId;
         uint32 areaId;
         Position entrance;
+        // the open-sea halls: past these (world x and y) the map runs out; 0 = walls all round
+        float minX = 0.0f, maxX = 0.0f, minY = 0.0f, maxY = 0.0f;
     };
 
     struct HallChoice
@@ -96,6 +102,14 @@ namespace
         { "Dalaran Sewers",     { 725, 4988, { 1218.01f, 764.795f, 14.7297f, 0.0f } },   { 726, 4989, { 1361.76f, 817.337f, 14.8449f, float(M_PI) } } },
         { "Nagrand Arena",      { 727, 4990, { 4027.6f, 2972.78f, 12.0723f, 5.196f } },  { 728, 4991, { 4085.45f, 2866.83f, 12.4005f, 2.087f } } },
         { "Violet Hold",        { 729, 4992, { 1808.82f, 803.93f, 44.364f, 6.282f } },   { 730, 4993, { 1808.82f, 803.93f, 44.364f, 6.282f } } },
+        // the islands: open ground at the crossroads below Lapidis' village, the meadow above
+        // Gillijim's west beach; the bounds 50 yards inside the last terrain tiles
+        { "Island of Dr Lapidis",
+            { 731, 4994, { -12245.8f, 3466.7f, 39.2f, float(M_PI) }, -13283.0f, -10717.0f, 2183.0f, 4750.0f },
+            { 732, 4995, { -12245.8f, 3466.7f, 39.2f, float(M_PI) }, -13283.0f, -10717.0f, 2183.0f, 4750.0f } },
+        { "Gillijim's Isle",
+            { 733, 4996, { -13925.0f, 3212.5f, 19.0f, 4.712f }, -14883.0f, -12850.0f, 1650.0f, 4217.0f },
+            { 734, 4997, { -13925.0f, 3212.5f, 19.0f, 4.712f }, -14883.0f, -12850.0f, 1650.0f, 4217.0f } },
     };
     constexpr uint8 HALL_COUNT = uint8(std::size(HALLS));
 
@@ -265,6 +279,14 @@ namespace
 
     // Someone left in a hall the guild moved out of (inside at the change, or logged in there
     // later): into the hall it uses now. Not a member any more: home.
+    bool OutOfBounds(Hall const* hall, Player* player)
+    {
+        if (hall->minX == hall->maxX)
+            return false;
+        float x = player->GetPositionX(), y = player->GetPositionY();
+        return x < hall->minX || x > hall->maxX || y < hall->minY || y > hall->maxY;
+    }
+
     void MoveToCurrentHall(Player* player)
     {
         if (player->IsBeingTeleported())
@@ -467,6 +489,14 @@ public:
             if (HallOfMap(player->GetMapId()) && player->IsInWorld() && !player->IsBeingTeleported() && !player->IsGameMaster()
                 && (guildId = GuildIdOf(player)) && HallOf(guildId, player->GetTeamId()).mapId != player->GetMapId())
                 MoveToCurrentHall(player);
+            // swum out to the edge of an island hall's map: back to the entrance
+            else if (Hall const* hall = HallOfMap(player->GetMapId()); hall && player->IsInWorld()
+                && !player->IsBeingTeleported() && OutOfBounds(hall, player))
+            {
+                ChatHandler(player->GetSession()).SendNotification("The currents carry you back to shore.");
+                player->TeleportTo(hall->mapId, hall->entrance.GetPositionX(), hall->entrance.GetPositionY(),
+                    hall->entrance.GetPositionZ(), hall->entrance.GetOrientation());
+            }
             return;
         }
 
