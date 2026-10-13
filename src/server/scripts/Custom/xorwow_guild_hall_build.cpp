@@ -50,6 +50,7 @@
  *     default XORBIS): the addon's preview tuning keys, for framing new catalogue models
  *     hall: the guild's HALLS index; placed worth: what Sell all gives back
  *   "GHB;COUNT;<group>=<n>,..."      placed per limited group, for the "1 max" items
+ *   "GHB;COUNTMORE;<group>=<n>,..."  the rest of that list, when it needs more than one message
  *   "GHB;SEL;<object>;<item>;<scale>;<rot>;<refund copper>"  right-clicked in build mode: the addon
  *                                    picks it up (MOVE), or with Shift asks to remove it (REFUND)
  *   "GHB;DONE;<text>" / "GHB;ERR;<text>"
@@ -614,18 +615,21 @@ namespace
                             ++counts[GroupOf(*item)];
             }
         }
+        // the first part starts the list afresh, the next ones ("COUNTMORE") add to it
         std::string line;
+        bool first = true;
         for (auto const& [group, count] : counts)
         {
             std::string entry = Acore::StringFormat("{}={}", group, count);
             if (line.size() + entry.size() > 200)
             {
-                SendToAddon(player, "COUNT;" + line);
+                SendToAddon(player, (first ? "COUNT;" : "COUNTMORE;") + line);
+                first = false;
                 line.clear();
             }
             line += (line.empty() ? "" : ",") + entry;
         }
-        SendToAddon(player, "COUNT;" + line);   // an empty one too: nothing limited is placed
+        SendToAddon(player, (first ? "COUNT;" : "COUNTMORE;") + line);   // an empty one too: nothing limited is placed
     }
 
     // Every builder of the guild: the money and the counts changed.
