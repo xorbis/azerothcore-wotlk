@@ -61,6 +61,10 @@
  * comes with a small yellow sphere at its middle (GameObjectDisplayInfo MARKER_DISPLAY, the client
  * patch's), the same object to the client - its name, its right-click - in a phase only players in
  * build mode are in (MARKER_PHASE): they point at the sphere as at any furniture (user, 2026-10-11).
+ * Whole buildings (stock WMOs, a map object: nothing to hover either) get one on the floor in front
+ * of the side that faced the builder when placed, not inside their walls (user, 2026-10-13). A map
+ * object cannot show the sphere's M2, so theirs is its own goober template (the catalogue's
+ * marker_entry, given the object's copy name in GiveCopy: MARKER_COPY_BASE).
  *
  * In build mode a right-click on a placed object - a chair, a mailbox, the guild vault, a banker -
  * selects it instead of using it: the use, gossip, bank, auction and mail requests the client
@@ -139,6 +143,8 @@ namespace
     constexpr uint32 COPY_SPAN = 1000;
     constexpr uint32 MARKER_DISPLAY = 261999;   // the effects' marker sphere (scripts/client-patch/gen_guild_hall.py)
     constexpr uint32 MARKER_PHASE = 0x40000000; // the phase the marker spheres are in, added to builders' own
+    constexpr uint32 MARKER_ENTRY_BASE = 262000;  // buildings' marker templates: + item (gen_guild_hall.py)
+    constexpr uint32 MARKER_COPY_BASE = COPY_BASE + 1000 * COPY_SPAN;  // their copies, as COPY_BASE's
 
     enum CatalogTeam : uint8 { CATALOG_BOTH = 0, CATALOG_ALLIANCE = 1, CATALOG_HORDE = 2 };
 
@@ -172,7 +178,9 @@ namespace
         uint32 guildDisplay = 0; // guild banners: the guild's own display is this + its guild id
         uint8 snap = SNAP_NONE;
         G3D::Vector3 boxMin, boxMax;   // building kit: the piece's box around its origin
-        float marker = 0.0f;    // effects: yards above its spot (at its own size) its marker sphere floats; 0 = none
+        float marker = 0.0f;    // effects, buildings: yards above its spot (at its own size) its marker sphere floats; 0 = none
+        float markerX = 0.0f, markerY = 0.0f;   // and how far from its spot, in its own axes (buildings: in front)
+        uint32 markerEntry = 0; // buildings: the sphere's own template; 0 = the object's entry
     };
 
     struct PlacedObject
@@ -251,12 +259,29 @@ namespace
         return entry >= COPY_BASE && entry < COPY_BASE + 1000 * COPY_SPAN;
     }
 
+    uint32 MarkerCopyEntry(uint32 item, uint32 copy)
+    {
+        return MARKER_COPY_BASE + item * COPY_SPAN + copy;
+    }
+
+    // A building's marker sphere, its catalogue template or a copy of it.
+    bool IsMarkerEntry(uint32 entry)
+    {
+        return (entry >= MARKER_ENTRY_BASE && entry < MARKER_ENTRY_BASE + 1000)
+            || (entry >= MARKER_COPY_BASE && entry < MARKER_COPY_BASE + 1000 * COPY_SPAN);
+    }
+
     // Under the lock: the catalogue item a hall object of this gameobject entry is.
     CatalogItem const* ItemOfEntry(uint32 entry)
     {
         if (IsCopyEntry(entry))
             return FindItem((entry - COPY_BASE) / COPY_SPAN);
-        auto it = std::find_if(catalog.begin(), catalog.end(), [entry](auto const& item) { return item.second.goEntry == entry; });
+        if (entry >= MARKER_COPY_BASE && entry < MARKER_COPY_BASE + 1000 * COPY_SPAN)
+            return FindItem((entry - MARKER_COPY_BASE) / COPY_SPAN);
+        auto it = std::find_if(catalog.begin(), catalog.end(), [entry](auto const& item)
+        {
+            return item.second.goEntry == entry || (item.second.markerEntry && item.second.markerEntry == entry);
+        });
         return it == catalog.end() ? nullptr : &it->second;
     }
 
@@ -282,8 +307,12 @@ namespace
         if (copy >= COPY_SPAN || !source)
             return;
         std::string name = Acore::StringFormat("{}|cff{:06x}|r", source->name, object.item * COPY_SPAN + copy);
-        if (sObjectMgr->XorWoWCopyGameObjectTemplate(item->goEntry, CopyEntry(object.item, copy), name))
-            object.copy = copy;
+        if (!sObjectMgr->XorWoWCopyGameObjectTemplate(item->goEntry, CopyEntry(object.item, copy), name))
+            return;
+        object.copy = copy;
+        // a building's marker sphere carries the same name: pointing at it is pointing at the building
+        if (item->markerEntry)
+            sObjectMgr->XorWoWCopyGameObjectTemplate(item->markerEntry, MarkerCopyEntry(object.item, copy), name);
     }
 
     void SendToAddon(Player* player, std::string const& body)
@@ -370,12 +399,28 @@ namespace
         return go;
     }
 
-    // Where an effect's marker sphere floats.
+    // Where an object's marker sphere floats: above an effect, in front of a building (its offset
+    // turned with it).
     Position MarkerSpot(PlacedObject const& object, CatalogItem const& item)
     {
         Position pos = object.pos;
-        pos.m_positionZ += item.marker * object.scale / 100.0f;
+        float scale = object.scale / 100.0f;
+        float o = object.pos.GetOrientation();
+        pos.m_positionX += (item.markerX * std::cos(o) - item.markerY * std::sin(o)) * scale;
+        pos.m_positionY += (item.markerX * std::sin(o) + item.markerY * std::cos(o)) * scale;
+        pos.m_positionZ += item.marker * scale;
         return pos;
+    }
+
+    // The template an object's marker sphere is spawned as: a building's own (its copy, named as the
+    // building), else the object's entry.
+    uint32 MarkerEntryOf(PlacedObject const& object, CatalogItem const& item, uint32 objectEntry)
+    {
+        if (!item.markerEntry)
+            return objectEntry;
+        if (object.copy && sObjectMgr->GetGameObjectTemplate(MarkerCopyEntry(object.item, object.copy)))
+            return MarkerCopyEntry(object.item, object.copy);
+        return item.markerEntry;
     }
 
     // An effect's marker sphere: the object's own entry (its name, its right-click) shown as the
@@ -429,7 +474,7 @@ namespace
             {
                 guids.push_back(go->GetGUID());
                 if (item.marker > 0.0f)
-                    if (GameObject* marker = SpawnMarker(map, entry, MarkerSpot(object, item)))
+                    if (GameObject* marker = SpawnMarker(map, MarkerEntryOf(object, item, entry), MarkerSpot(object, item)))
                         guids.push_back(marker->GetGUID());
             }
         }
@@ -1562,7 +1607,7 @@ namespace
         catalog.clear();
         QueryResult result = WorldDatabase.Query("SELECT id, name, price, team, limit_group, max_count, go_entry, focus_entry, npc_entry, "
             "dest_map, dest_x, dest_y, dest_z, dest_o, enabled, rise, guild_display, snap, box_min_x, box_min_y, box_min_z, "
-            "box_max_x, box_max_y, box_max_z, marker FROM xorwow_guild_hall_catalog");
+            "box_max_x, box_max_y, box_max_z, marker, marker_x, marker_y, marker_entry FROM xorwow_guild_hall_catalog");
         if (!result)
         {
             LOG_ERROR("server.loading", "XorWoW guild hall: world.xorwow_guild_hall_catalog is empty or missing - build mode has nothing to place.");
@@ -1590,8 +1635,13 @@ namespace
             item.boxMin = G3D::Vector3(f[18].Get<float>(), f[19].Get<float>(), f[20].Get<float>());
             item.boxMax = G3D::Vector3(f[21].Get<float>(), f[22].Get<float>(), f[23].Get<float>());
             item.marker = f[24].Get<float>();
+            item.markerX = f[25].Get<float>();
+            item.markerY = f[26].Get<float>();
+            item.markerEntry = f[27].Get<uint32>();
             if (item.goEntry && !sObjectMgr->GetGameObjectTemplate(item.goEntry))
                 LOG_ERROR("server.loading", "XorWoW guild hall: item {} ({}) has no gameobject_template {}", item.id, item.name, item.goEntry);
+            if (item.markerEntry && !sObjectMgr->GetGameObjectTemplate(item.markerEntry))
+                LOG_ERROR("server.loading", "XorWoW guild hall: item {} ({}) has no marker gameobject_template {}", item.id, item.name, item.markerEntry);
             if (item.npcEntry && !sObjectMgr->GetCreatureTemplate(item.npcEntry))
                 LOG_ERROR("server.loading", "XorWoW guild hall: item {} ({}) has no creature_template {}", item.id, item.name, item.npcEntry);
             catalog[item.id] = std::move(item);
@@ -1734,6 +1784,54 @@ public:
         if (player->IsInCombat() || player->IsBeingTeleported())
             return true;
         player->TeleportTo(uint32(item.destMap), item.dest.GetPositionX(), item.dest.GetPositionY(), item.dest.GetPositionZ(), item.dest.GetOrientation());
+        return true;
+    }
+};
+
+// A waypoint (user 2026-10-13): two of the same colour in a hall take you from one to the other,
+// both ways; one alone does nothing yet.
+class xorwow_guild_hall_teleporter : public GameObjectScript
+{
+public:
+    xorwow_guild_hall_teleporter() : GameObjectScript("xorwow_guild_hall_teleporter") { }
+
+    bool OnGossipHello(Player* player, GameObject* go) override
+    {
+        std::optional<Position> dest;
+        std::string name;
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            auto instance = spawned.find(InstanceKey(go->GetMapId(), go->GetInstanceId()));
+            if (instance == spawned.end())
+                return true;
+            auto self = instance->second.objectOf.find(go->GetGUID());
+            auto placed = objects.find(instance->second.guildId);
+            if (self == instance->second.objectOf.end() || placed == objects.end())
+                return true;
+            auto object = placed->second.find(self->second);
+            if (object == placed->second.end())
+                return true;
+            CatalogItem const* item = FindItem(object->second.item);
+            if (!item)
+                return true;
+            name = item->name;
+            for (auto const& [id, other] : placed->second)
+            {
+                if (id == object->first || other.item != object->second.item || other.mapId != object->second.mapId)
+                    continue;
+                dest = other.pos;
+                dest->m_positionZ += item->rise * other.scale / 100.0f + 0.5f;
+                break;
+            }
+        }
+        if (!dest)
+        {
+            ChatHandler(player->GetSession()).SendNotification(Acore::StringFormat("This {} has no twin yet: place the second one (1/2).", name));
+            return true;
+        }
+        if (player->IsInCombat() || player->IsBeingTeleported())
+            return true;
+        player->NearTeleportTo(dest->GetPositionX(), dest->GetPositionY(), dest->GetPositionZ(), player->GetOrientation());
         return true;
     }
 };
@@ -1929,7 +2027,7 @@ public:
         // the hall's furniture (GO_FLAG_INTERACT_COND, gameobject_template_addon) is clickable for builders only
         GameObject::XorWoWInteractCheck = [](GameObject const* go, Player const* player)
         {
-            if ((go->GetEntry() <= 260000 || go->GetEntry() >= 261000) && !IsCopyEntry(go->GetEntry()))
+            if ((go->GetEntry() <= 260000 || go->GetEntry() >= 261000) && !IsCopyEntry(go->GetEntry()) && !IsMarkerEntry(go->GetEntry()))
                 return false;
             std::lock_guard<std::mutex> guard(builderLock);
             return builders.count(player->GetGUID()) != 0;
@@ -1959,6 +2057,7 @@ void AddSC_xorwow_guild_hall_build()
     new xorwow_guild_hall_decor();
     new xorwow_guild_hall_door();
     new xorwow_guild_hall_portal();
+    new xorwow_guild_hall_teleporter();
     new xorwow_guild_hall_build_playerscript();
     new xorwow_guild_hall_build_mapscript();
     new xorwow_guild_hall_build_serverscript();
