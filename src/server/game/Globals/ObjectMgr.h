@@ -764,6 +764,9 @@ public:
     GameObjectTemplate const* GetGameObjectTemplate(uint32 entry);
     bool IsGameObjectStaticTransport(uint32 entry);
     [[nodiscard]] GameObjectTemplateContainer const* GetGameObjectTemplates() const { return &_gameObjectTemplateStore; }
+    // XorWoW guild halls: a copy of a gameobject template (and its addon) under another entry and
+    // name, so that a client tells the copies apart by name. Only while no map is updating.
+    GameObjectTemplate const* XorWoWCopyGameObjectTemplate(uint32 source, uint32 entry, std::string const& name);
     int LoadReferenceVendor(int32 vendor, int32 item_id, std::set<uint32>* skip_vendors);
 
     void LoadGameObjectTemplate();

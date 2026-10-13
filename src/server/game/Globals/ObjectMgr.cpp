@@ -11007,6 +11007,27 @@ GameObjectTemplate const* ObjectMgr::GetGameObjectTemplate(uint32 entry)
     return nullptr;
 }
 
+GameObjectTemplate const* ObjectMgr::XorWoWCopyGameObjectTemplate(uint32 source, uint32 entry, std::string const& name)
+{
+    if (GameObjectTemplate const* existing = GetGameObjectTemplate(entry))
+        return existing;
+    GameObjectTemplate const* from = GetGameObjectTemplate(source);
+    if (!from)
+        return nullptr;
+
+    GameObjectTemplate& copy = _gameObjectTemplateStore[entry];
+    copy = *from;
+    copy.entry = entry;
+    copy.name = name;
+    if (GameObjectTemplateAddon const* addon = GetGameObjectTemplateAddon(source))
+    {
+        GameObjectTemplateAddon& addonCopy = _gameObjectTemplateAddonStore[entry];
+        addonCopy = *addon;
+        addonCopy.entry = entry;
+    }
+    return &copy;
+}
+
 bool ObjectMgr::IsGameObjectStaticTransport(uint32 entry)
 {
     GameObjectTemplate const* goinfo = GetGameObjectTemplate(entry);

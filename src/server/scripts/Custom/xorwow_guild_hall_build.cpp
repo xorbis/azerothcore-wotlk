@@ -20,14 +20,20 @@
  *   "GHB;AIM;<item>;<scale>;<rot>"  the next placement buys this item (scale in %, rot in degrees)
  *   "GHB;MOVE;<object>;<scale>;<rot>" the next placement moves this object instead
  *   "GHB;REFUND;<object>"            removes it, its price back into the guild bank
- *   "GHB;GRAB;<name>"                the next placement moves the hall's object of that name the
- *                                    player points at (the addon's right-click while the tooltip
- *                                    shows a placed object: the cast needs that click, so the
- *                                    client sends no use request to tell which one it was)
- *   "GHB;FIND;<name>"                -> "SEL;..." for that object (Shift + right-click: remove)
- *   "GHB;TURN;<degrees>;<name>"      turns that object where it stands (Shift + wheel over it)
- *   "GHB;LIFT;<notches>;<name>"      raises (or with a negative count lowers) it LIFT_STEP yards a
+ *   "GHB;GRAB;<ref>"                 the next placement moves that hall object (the addon's
+ *                                    right-click while the tooltip shows a placed object: the cast
+ *                                    needs that click, so the client sends no use request to tell
+ *                                    which one it was). ref (ObjectByRef): "#<n>" the code hidden in
+ *                                    a placed object's name, "0x<guid>" a placed NPC, "@<object>" an
+ *                                    object selected through its panel row (SEL), or a name
+ *   "GHB;FIND;<ref>"                 -> "SEL;..." for that object (Shift + right-click: remove)
+ *   "GHB;TURN;<degrees>;<ref>"       turns that object where it stands (Shift + wheel over it)
+ *   "GHB;LIFT;<notches>;<ref>"       raises (or with a negative count lowers) it LIFT_STEP yards a
  *                                    notch where it stands (Alt + wheel over it)
+ *   "GHB;SLIDE;<notches>;<ref>"      moves it SLIDE_STEP yards a notch to the player's left (or with a
+ *                                    negative count right), square to the player's facing (Ctrl + wheel)
+ *   "GHB;PUSH;<notches>;<ref>"       moves it SLIDE_STEP yards a notch away from the player (or with a
+ *                                    negative count towards), along the player's facing (Ctrl + Shift + wheel)
  *   "GHB;FREE;<0|1>"                 Ctrl went down / up: while it is down, a building kit piece goes
  *                                    exactly where clicked instead of snapping to its neighbours
  *   "GHB;EMBLEM?"                    -> "EMBLEM;<guild id>;<style>;<color>;<border>;<border color>;<background>",
@@ -49,6 +55,11 @@
  *   "GHB;DONE;<text>" / "GHB;ERR;<text>"
  * The addon's build panel buttons cast Guild Hall Placement (spell 260010, the client patch's,
  * Blizzard's ground targeting circle): the spot clicked on the floor is the spell's destination.
+ *
+ * Effects (particles, glows: the catalogue's marker column) have nothing the mouse can hover, so each
+ * comes with a small yellow sphere at its middle (GameObjectDisplayInfo MARKER_DISPLAY, the client
+ * patch's), the same object to the client - its name, its right-click - in a phase only players in
+ * build mode are in (MARKER_PHASE): they point at the sphere as at any furniture (user, 2026-10-11).
  *
  * In build mode a right-click on a placed object - a chair, a mailbox, the guild vault, a banker -
  * selects it instead of using it: the use, gossip, bank, auction and mail requests the client
@@ -115,6 +126,7 @@ namespace
     constexpr float ENTRANCE_CLEARANCE = 4.0f;  // yards kept free around the Guildstone's landing spot
     constexpr uint32 SELECT_REPEAT_MS = 500;    // one right-click sends several requests
     constexpr float LIFT_STEP = 0.1f;           // yards an Alt + wheel notch raises or lowers an object
+    constexpr float SLIDE_STEP = 0.1f;          // yards a Ctrl + wheel notch moves an object sideways
     constexpr float NPC_FLOOR_REACH = 0.4f;     // yards off the hall's floor a placed NPC still stands on it
     constexpr uint32 GUILD_BANNER_SLOTS = 999;  // guild banner displays per model (client-patch/patch.json guild_banners)
     constexpr float SNAP_RANGE = 3.0f;          // yards from the click a building kit piece may snap to
@@ -122,6 +134,10 @@ namespace
     constexpr float SNAP_TOUCH = 0.05f;         // yards two pieces may share without counting as overlapping
     constexpr float REST_REACH = 1.0f;          // a floor's top this close to the floor clicked on carries what is placed on it
     constexpr float QUARTER = float(M_PI) / 2;
+    constexpr uint32 COPY_BASE = 9000000;       // placed objects' own gameobject templates: COPY_BASE + item * COPY_SPAN + copy (GiveCopy)
+    constexpr uint32 COPY_SPAN = 1000;
+    constexpr uint32 MARKER_DISPLAY = 261999;   // the effects' marker sphere (scripts/client-patch/gen_guild_hall.py)
+    constexpr uint32 MARKER_PHASE = 0x40000000; // the phase the marker spheres are in, added to builders' own
 
     enum CatalogTeam : uint8 { CATALOG_BOTH = 0, CATALOG_ALLIANCE = 1, CATALOG_HORDE = 2 };
 
@@ -155,6 +171,7 @@ namespace
         uint32 guildDisplay = 0; // guild banners: the guild's own display is this + its guild id
         uint8 snap = SNAP_NONE;
         G3D::Vector3 boxMin, boxMax;   // building kit: the piece's box around its origin
+        float marker = 0.0f;    // effects: yards above its spot (at its own size) its marker sphere floats; 0 = none
     };
 
     struct PlacedObject
@@ -166,6 +183,7 @@ namespace
         Position pos;
         uint32 scale = 100;     // %
         uint32 price = 0;       // copper paid: what a refund gives back
+        uint32 copy = 0;        // its own copy of its item's template (GiveCopy); 0 = the item's, shared
     };
 
     // The objects spawned in one hall instance.
@@ -220,6 +238,51 @@ namespace
     {
         auto it = catalog.find(id);
         return it == catalog.end() ? nullptr : &it->second;
+    }
+
+    uint32 CopyEntry(uint32 item, uint32 copy)
+    {
+        return COPY_BASE + item * COPY_SPAN + copy;
+    }
+
+    bool IsCopyEntry(uint32 entry)
+    {
+        return entry >= COPY_BASE && entry < COPY_BASE + 1000 * COPY_SPAN;
+    }
+
+    // Under the lock: the catalogue item a hall object of this gameobject entry is.
+    CatalogItem const* ItemOfEntry(uint32 entry)
+    {
+        if (IsCopyEntry(entry))
+            return FindItem((entry - COPY_BASE) / COPY_SPAN);
+        auto it = std::find_if(catalog.begin(), catalog.end(), [entry](auto const& item) { return item.second.goEntry == entry; });
+        return it == catalog.end() ? nullptr : &it->second;
+    }
+
+    // Under the lock, while no map updates (the template store is not guarded): the object's own
+    // copy of its item's template, the first copy number its guild does not use for that item yet.
+    // Its world tooltip shows the item's name followed by an empty colour code holding the item and
+    // copy ("Wooden Chair|cff0f4241|r": nothing visible), which the addon reads to say exactly which
+    // object it points at (user, 2026-10-11: a right-click moved another same-named object). An
+    // entry always carries the same name, so the client's name cache never goes stale.
+    void GiveCopy(PlacedObject& object)
+    {
+        CatalogItem const* item = FindItem(object.item);
+        if (!item || !item->goEntry || item->npcEntry)
+            return;
+        std::unordered_set<uint32> used;
+        for (auto const& [id, other] : objects[object.guildId])
+            if (other.item == object.item && other.id != object.id)
+                used.insert(other.copy);
+        uint32 copy = 1;
+        while (used.count(copy))
+            ++copy;
+        GameObjectTemplate const* source = sObjectMgr->GetGameObjectTemplate(item->goEntry);
+        if (copy >= COPY_SPAN || !source)
+            return;
+        std::string name = Acore::StringFormat("{}|cff{:06x}|r", source->name, object.item * COPY_SPAN + copy);
+        if (sObjectMgr->XorWoWCopyGameObjectTemplate(item->goEntry, CopyEntry(object.item, copy), name))
+            object.copy = copy;
     }
 
     void SendToAddon(Player* player, std::string const& body)
@@ -278,7 +341,8 @@ namespace
     // Spawning: temporary objects in the instance, nothing saved as a world spawn.
 
     // displayId: 0 = the template's
-    GameObject* SpawnGameObject(Map* map, uint32 entry, Position const& pos, float scale, uint32 displayId = 0)
+    GameObject* SpawnGameObject(Map* map, uint32 entry, Position const& pos, float scale, uint32 displayId = 0,
+                                uint32 phaseMask = PHASEMASK_NORMAL)
     {
         GameObjectTemplate const* info = sObjectMgr->GetGameObjectTemplate(entry);
         if (!info)
@@ -286,7 +350,7 @@ namespace
 
         GameObject* go = new GameObject();
         G3D::Quat rotation = G3D::Quat::fromAxisAngleRotation(G3D::Vector3::unitZ(), pos.GetOrientation());
-        if (!go->Create(map->GenerateLowGuid<HighGuid::GameObject>(), entry, map, PHASEMASK_NORMAL,
+        if (!go->Create(map->GenerateLowGuid<HighGuid::GameObject>(), entry, map, phaseMask,
                         pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(), pos.GetOrientation(), rotation, 255, GO_STATE_READY))
         {
             delete go;
@@ -305,7 +369,26 @@ namespace
         return go;
     }
 
-    // The object's world objects: the object itself, or the NPC; a crafting station's spell focus.
+    // Where an effect's marker sphere floats.
+    Position MarkerSpot(PlacedObject const& object, CatalogItem const& item)
+    {
+        Position pos = object.pos;
+        pos.m_positionZ += item.marker * object.scale / 100.0f;
+        return pos;
+    }
+
+    // An effect's marker sphere: the object's own entry (its name, its right-click) shown as the
+    // sphere, its size whatever the object's, seen in build mode only.
+    GameObject* SpawnMarker(Map* map, uint32 entry, Position const& pos)
+    {
+        GameObjectTemplate const* info = sObjectMgr->GetGameObjectTemplate(entry);
+        if (!info || info->size <= 0.0f)
+            return nullptr;
+        return SpawnGameObject(map, entry, pos, 1.0f / info->size, MARKER_DISPLAY, MARKER_PHASE);
+    }
+
+    // The object's world objects: the object itself, or the NPC; an effect's marker sphere; a
+    // crafting station's spell focus.
     std::vector<ObjectGuid> SpawnObject(Map* map, PlacedObject const& object, CatalogItem const& item)
     {
         std::vector<ObjectGuid> guids;
@@ -340,8 +423,14 @@ namespace
             pos.m_positionZ += item.rise * scale;
             // a guild banner: the guild's tabard, its client-side textures painted by the launcher
             uint32 displayId = item.guildDisplay && object.guildId <= GUILD_BANNER_SLOTS ? item.guildDisplay + object.guildId : 0;
-            if (GameObject* go = SpawnGameObject(map, item.goEntry, pos, scale, displayId))
+            uint32 entry = object.copy ? CopyEntry(object.item, object.copy) : item.goEntry;
+            if (GameObject* go = SpawnGameObject(map, entry, pos, scale, displayId))
+            {
                 guids.push_back(go->GetGUID());
+                if (item.marker > 0.0f)
+                    if (GameObject* marker = SpawnMarker(map, entry, MarkerSpot(object, item)))
+                        guids.push_back(marker->GetGUID());
+            }
         }
 
         if (!guids.empty() && item.focusEntry)
@@ -584,6 +673,8 @@ namespace
             std::lock_guard<std::mutex> guard(builderLock);
             builders.erase(player->GetGUID());
         }
+        if (player->GetPhaseMask() & MARKER_PHASE)
+            player->SetPhaseMask(player->GetPhaseMask() & ~MARKER_PHASE, true);
         if (player->HasSpell(PLACEMENT_SPELL))
             player->removeSpell(PLACEMENT_SPELL, SPEC_MASK_ALL, false);
         if (Pending* pending = player->CustomData.Get<Pending>(PENDING_KEY))
@@ -608,6 +699,8 @@ namespace
             std::lock_guard<std::mutex> guard(builderLock);
             builders.insert(player->GetGUID());
         }
+        if (!(player->GetPhaseMask() & MARKER_PHASE))
+            player->SetPhaseMask(player->GetPhaseMask() | MARKER_PHASE, true);   // the effects' marker spheres
         if (!player->HasSpell(PLACEMENT_SPELL))
             player->learnSpell(PLACEMENT_SPELL, true);   // temporary: never saved with the character
         RefreshInteraction(player);
@@ -829,6 +922,59 @@ namespace
         return best;
     }
 
+    // The guild's placed object the addon points at: "#<n>" the code in a placed object's world
+    // tooltip (GiveCopy), "0x<guid>" a placed NPC's guid (its mouseover unit), "@<id>" the object
+    // itself (one selected through its panel row, for those the mouse cannot hover), anything else a
+    // name (ObjectByName's guess: objects too many for their own copy, a panel row's right-click).
+    std::optional<PlacedObject> ObjectByRef(Player* player, std::string_view ref)
+    {
+        if (ref.size() > 1 && ref[0] == '#')
+        {
+            std::optional<uint32> code = Acore::StringTo<uint32>(ref.substr(1));
+            if (!code || *code % COPY_SPAN == 0)
+                return std::nullopt;
+            std::lock_guard<std::mutex> guard(lock);
+            auto placed = objects.find(player->GetGuildId());
+            if (placed != objects.end())
+                for (auto const& [id, object] : placed->second)
+                    if (object.mapId == player->GetMapId() && object.item == *code / COPY_SPAN && object.copy == *code % COPY_SPAN)
+                        return object;
+            return std::nullopt;
+        }
+        if (ref.size() > 1 && ref[0] == '@')
+        {
+            std::optional<uint32> id = Acore::StringTo<uint32>(ref.substr(1));
+            if (!id)
+                return std::nullopt;
+            std::lock_guard<std::mutex> guard(lock);
+            auto placed = objects.find(player->GetGuildId());
+            if (placed == objects.end())
+                return std::nullopt;
+            auto it = placed->second.find(*id);
+            if (it == placed->second.end() || it->second.mapId != player->GetMapId())
+                return std::nullopt;
+            return it->second;
+        }
+        if (ref.size() > 2 && StringEqualI(ref.substr(0, 2), "0x"))
+        {
+            std::optional<uint64> raw = Acore::StringTo<uint64>(ref.substr(2), 16);
+            if (!raw)
+                return std::nullopt;
+            std::lock_guard<std::mutex> guard(lock);
+            auto instance = spawned.find(InstanceKey(player->GetMapId(), player->GetInstanceId()));
+            if (instance == spawned.end() || instance->second.guildId != player->GetGuildId())
+                return std::nullopt;
+            auto it = instance->second.objectOf.find(ObjectGuid(*raw));
+            if (it == instance->second.objectOf.end())
+                return std::nullopt;
+            auto placed = objects.find(instance->second.guildId);
+            if (placed == objects.end() || !placed->second.count(it->second))
+                return std::nullopt;
+            return placed->second[it->second];
+        }
+        return ObjectByName(player, ref);
+    }
+
     // Under the lock: the object turned where it stands. Tried and dropped (2026-10-02): turning the
     // object in place (its parent rotation field: clients ignore it on a standing object) and sending
     // it again (a client keeps its copy, old angle). So the turned one is a new object, spawned
@@ -859,7 +1005,7 @@ namespace
                     if (Creature* npc = map->GetCreature(guid))
                     {
                         npc->SetHomePosition(object.pos);
-                        if (std::fabs(npc->GetPositionZ() - object.pos.GetPositionZ()) > 0.01f)
+                        if (npc->GetExactDist(&object.pos) > 0.01f)
                             npc->NearTeleportTo(object.pos.GetPositionX(), object.pos.GetPositionY(), object.pos.GetPositionZ(), object.pos.GetOrientation());
                         else
                             npc->SetFacingTo(object.pos.GetOrientation());
@@ -871,7 +1017,9 @@ namespace
                 if (!old)
                     continue;
                 bool focus = item && item->focusEntry && old->GetEntry() == item->focusEntry;
-                GameObject* turned = SpawnGameObject(map, old->GetEntry(), focus ? object.pos : raised,old->GetObjectScale() / old->GetGOInfo()->size, old->GetDisplayId());
+                GameObject* turned = old->GetPhaseMask() == MARKER_PHASE && item
+                    ? SpawnMarker(map, old->GetEntry(), MarkerSpot(object, *item))
+                    : SpawnGameObject(map, old->GetEntry(), focus ? object.pos : raised, old->GetObjectScale() / old->GetGOInfo()->size, old->GetDisplayId());
                 if (!turned)
                 {
                     kept.push_back(guid);
@@ -894,7 +1042,7 @@ namespace
 
     // Shift + wheel over a placed object: turned where it stands and saved. World thread, no map
     // update running.
-    void Turn(Player* player, int32 degrees, std::string_view name)
+    void Turn(Player* player, int32 degrees, std::string_view ref)
     {
         std::string refusal = BuildRefusal(player);
         if (!refusal.empty())
@@ -902,7 +1050,7 @@ namespace
             SendError(player, refusal);
             return;
         }
-        std::optional<PlacedObject> found = ObjectByName(player, name);
+        std::optional<PlacedObject> found = ObjectByRef(player, ref);
         if (!found)
         {
             SendError(player, "That is not one of your hall's objects.");
@@ -928,7 +1076,7 @@ namespace
     // Alt + wheel over a placed object: raised or lowered LIFT_STEP yards a notch where it stands,
     // and saved. Moving it puts it back on the floor (its panel row's right-click reaches one
     // lifted out of reach). World thread, no map update running.
-    void Lift(Player* player, int32 steps, std::string_view name)
+    void Lift(Player* player, int32 steps, std::string_view ref)
     {
         std::string refusal = BuildRefusal(player);
         if (!refusal.empty())
@@ -936,7 +1084,7 @@ namespace
             SendError(player, refusal);
             return;
         }
-        std::optional<PlacedObject> found = ObjectByName(player, name);
+        std::optional<PlacedObject> found = ObjectByRef(player, ref);
         if (!found)
         {
             SendError(player, "That is not one of your hall's objects.");
@@ -954,6 +1102,47 @@ namespace
             TurnEverywhere(object);
         }
         CharacterDatabase.Execute("UPDATE xorwow_guild_hall_object SET z = {} WHERE id = {}", object.pos.GetPositionZ(), object.id);
+    }
+
+    // Ctrl + wheel over a placed object: moved SLIDE_STEP yards a notch sideways, square to the
+    // player's facing - the camera's when it is turned with the right mouse button - left for a
+    // positive count; with ahead (Ctrl + Shift + wheel) along that facing instead, away for a
+    // positive count. Its height and facing stay. Saved. World thread, no map update running.
+    void Slide(Player* player, int32 steps, std::string_view ref, bool ahead)
+    {
+        std::string refusal = BuildRefusal(player);
+        if (!refusal.empty())
+        {
+            SendError(player, refusal);
+            return;
+        }
+        std::optional<PlacedObject> found = ObjectByRef(player, ref);
+        if (!found)
+        {
+            SendError(player, "That is not one of your hall's objects.");
+            return;
+        }
+        float left = player->GetOrientation() + (ahead ? 0.0f : float(M_PI) / 2);
+        PlacedObject object;
+        {
+            std::lock_guard<std::mutex> guard(lock);
+            auto placed = objects.find(found->guildId);
+            if (placed == objects.end() || !placed->second.count(found->id))
+                return;
+            PlacedObject& stored = placed->second[found->id];
+            Position dest = stored.pos;
+            dest.m_positionX += steps * SLIDE_STEP * std::cos(left);
+            dest.m_positionY += steps * SLIDE_STEP * std::sin(left);
+            if (NearGuildHallEntrance(player->GetMapId(), dest, ENTRANCE_CLEARANCE))
+            {
+                SendError(player, "Keep the entrance clear: members arrive there.");
+                return;
+            }
+            stored.pos.Relocate(dest.GetPositionX(), dest.GetPositionY());
+            object = stored;
+            TurnEverywhere(object);
+        }
+        CharacterDatabase.Execute("UPDATE xorwow_guild_hall_object SET x = {}, y = {} WHERE id = {}", object.pos.GetPositionX(), object.pos.GetPositionY(), object.id);
     }
 
     // The addon's removal confirmation for this object (and its fallback pick-up).
@@ -1305,6 +1494,7 @@ namespace
         {
             std::lock_guard<std::mutex> guard(lock);
             object.id = nextObjectId++;
+            GiveCopy(object);   // the world update: no map updating
         }
 
         CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
@@ -1368,7 +1558,7 @@ namespace
         catalog.clear();
         QueryResult result = WorldDatabase.Query("SELECT id, name, price, team, limit_group, max_count, go_entry, focus_entry, npc_entry, "
             "dest_map, dest_x, dest_y, dest_z, dest_o, enabled, rise, guild_display, snap, box_min_x, box_min_y, box_min_z, "
-            "box_max_x, box_max_y, box_max_z FROM xorwow_guild_hall_catalog");
+            "box_max_x, box_max_y, box_max_z, marker FROM xorwow_guild_hall_catalog");
         if (!result)
         {
             LOG_ERROR("server.loading", "XorWoW guild hall: world.xorwow_guild_hall_catalog is empty or missing - build mode has nothing to place.");
@@ -1395,6 +1585,7 @@ namespace
             item.snap = f[17].Get<uint8>();
             item.boxMin = G3D::Vector3(f[18].Get<float>(), f[19].Get<float>(), f[20].Get<float>());
             item.boxMax = G3D::Vector3(f[21].Get<float>(), f[22].Get<float>(), f[23].Get<float>());
+            item.marker = f[24].Get<float>();
             if (item.goEntry && !sObjectMgr->GetGameObjectTemplate(item.goEntry))
                 LOG_ERROR("server.loading", "XorWoW guild hall: item {} ({}) has no gameobject_template {}", item.id, item.name, item.goEntry);
             if (item.npcEntry && !sObjectMgr->GetCreatureTemplate(item.npcEntry))
@@ -1425,6 +1616,9 @@ namespace
             objects[object.guildId][object.id] = object;
             nextObjectId = std::max(nextObjectId, object.id + 1);
         } while (result->NextRow());
+        for (auto& [guildId, placed] : objects)   // at startup: no map updating
+            for (auto& [id, object] : placed)
+                GiveCopy(object);
     }
 
     // The client sends one of these for a right-click, depending on what was clicked.
@@ -1528,10 +1722,10 @@ public:
         CatalogItem item;
         {
             std::lock_guard<std::mutex> guard(lock);
-            auto it = std::find_if(catalog.begin(), catalog.end(), [go](auto const& entry) { return entry.second.goEntry == go->GetEntry(); });
-            if (it == catalog.end() || it->second.destMap < 0)
+            CatalogItem const* found = ItemOfEntry(go->GetEntry());
+            if (!found || found->destMap < 0)
                 return true;
-            item = it->second;
+            item = *found;
         }
         if (player->IsInCombat() || player->IsBeingTeleported())
             return true;
@@ -1578,7 +1772,7 @@ public:
         else if (rest.rfind(";GRAB;", 0) == 0 || rest.rfind(";FIND;", 0) == 0)
         {
             bool grab = rest[1] == 'G';
-            std::optional<PlacedObject> object = IsBuilder(player) ? ObjectByName(player, rest.substr(6)) : std::nullopt;
+            std::optional<PlacedObject> object = IsBuilder(player) ? ObjectByRef(player, rest.substr(6)) : std::nullopt;
             if (!object)
                 SendError(player, "That is not one of your hall's objects.");
             else if (grab)
@@ -1607,6 +1801,15 @@ public:
             std::optional<int32> steps = sep == std::string_view::npos ? std::nullopt : Acore::StringTo<int32>(args.substr(0, sep));
             if (steps && *steps >= -10 && *steps <= 10 && *steps != 0)
                 Lift(player, *steps, args.substr(sep + 1));
+        }
+        else if (rest.rfind(";SLIDE;", 0) == 0 || rest.rfind(";PUSH;", 0) == 0)
+        {
+            bool ahead = rest[1] == 'P';
+            std::string_view args = rest.substr(ahead ? 6 : 7);
+            size_t sep = args.find(';');
+            std::optional<int32> steps = sep == std::string_view::npos ? std::nullopt : Acore::StringTo<int32>(args.substr(0, sep));
+            if (steps && *steps >= -10 && *steps <= 10 && *steps != 0)
+                Slide(player, *steps, args.substr(sep + 1), ahead);
         }
         else if (rest.rfind(";FREE;", 0) == 0)
             player->CustomData.GetDefault<Pending>(PENDING_KEY)->freePlace = rest.substr(6) == "1";
@@ -1722,7 +1925,7 @@ public:
         // the hall's furniture (GO_FLAG_INTERACT_COND, gameobject_template_addon) is clickable for builders only
         GameObject::XorWoWInteractCheck = [](GameObject const* go, Player const* player)
         {
-            if (go->GetEntry() <= 260000 || go->GetEntry() >= 261000)
+            if ((go->GetEntry() <= 260000 || go->GetEntry() >= 261000) && !IsCopyEntry(go->GetEntry()))
                 return false;
             std::lock_guard<std::mutex> guard(builderLock);
             return builders.count(player->GetGUID()) != 0;
