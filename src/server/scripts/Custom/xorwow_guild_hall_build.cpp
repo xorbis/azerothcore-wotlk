@@ -1831,6 +1831,8 @@ public:
         }
         if (player->IsInCombat() || player->IsBeingTeleported())
             return true;
+        // Off the mount as you step through (user 2026-10-13).
+        player->RemoveAurasByType(SPELL_AURA_MOUNTED);
         player->NearTeleportTo(dest->GetPositionX(), dest->GetPositionY(), dest->GetPositionZ(), player->GetOrientation());
         return true;
     }
