@@ -17,8 +17,8 @@ INSERT INTO `instance_template` (`map`, `parent`, `script`, `allowMount`) VALUES
 -- inside the hall.
 DELETE FROM `game_graveyard` WHERE `ID` IN (1727, 1728, 1729, 1730);
 INSERT INTO `game_graveyard` (`ID`, `Map`, `x`, `y`, `z`, `Comment`) VALUES
-(1727, 731, -12245.8, 3466.7, 39.2, 'XorWoW Alliance Guild Hall (Island of Dr Lapidis) - entrance'),
-(1728, 732, -12245.8, 3466.7, 39.2, 'XorWoW Horde Guild Hall (Island of Dr Lapidis) - entrance'),
+(1727, 731, -11876.7, 3104.04, 10.2148, 'XorWoW Alliance Guild Hall (Island of Dr Lapidis) - entrance'),
+(1728, 732, -11876.7, 3104.04, 10.2148, 'XorWoW Horde Guild Hall (Island of Dr Lapidis) - entrance'),
 (1729, 733, -13925.0, 3212.5, 19.0, 'XorWoW Alliance Guild Hall (Gillijim''s Isle) - entrance'),
 (1730, 734, -13925.0, 3212.5, 19.0, 'XorWoW Horde Guild Hall (Gillijim''s Isle) - entrance');
 

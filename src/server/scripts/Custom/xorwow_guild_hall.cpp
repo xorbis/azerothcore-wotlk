@@ -102,11 +102,11 @@ namespace
         { "Dalaran Sewers",     { 725, 4988, { 1218.01f, 764.795f, 14.7297f, 0.0f } },   { 726, 4989, { 1361.76f, 817.337f, 14.8449f, float(M_PI) } } },
         { "Nagrand Arena",      { 727, 4990, { 4027.6f, 2972.78f, 12.0723f, 5.196f } },  { 728, 4991, { 4085.45f, 2866.83f, 12.4005f, 2.087f } } },
         { "Violet Hold",        { 729, 4992, { 1808.82f, 803.93f, 44.364f, 6.282f } },   { 730, 4993, { 1808.82f, 803.93f, 44.364f, 6.282f } } },
-        // the islands: open ground at the crossroads below Lapidis' village, the meadow above
-        // Gillijim's west beach; the bounds 50 yards inside the last terrain tiles
+        // the islands: Lapidis' dock (where the user stood, 2026-10-13), the meadow above Gillijim's
+        // west beach; the bounds 50 yards inside the last terrain tiles
         { "Island of Dr Lapidis",
-            { 731, 4994, { -12245.8f, 3466.7f, 39.2f, float(M_PI) }, -13283.0f, -10717.0f, 2183.0f, 4750.0f },
-            { 732, 4995, { -12245.8f, 3466.7f, 39.2f, float(M_PI) }, -13283.0f, -10717.0f, 2183.0f, 4750.0f } },
+            { 731, 4994, { -11876.7f, 3104.04f, 10.2148f, 1.553f }, -13283.0f, -10717.0f, 2183.0f, 4750.0f },
+            { 732, 4995, { -11876.7f, 3104.04f, 10.2148f, 1.553f }, -13283.0f, -10717.0f, 2183.0f, 4750.0f } },
         { "Gillijim's Isle",
             { 733, 4996, { -13925.0f, 3212.5f, 19.0f, 4.712f }, -14883.0f, -12850.0f, 1650.0f, 4217.0f },
             { 734, 4997, { -13925.0f, 3212.5f, 19.0f, 4.712f }, -14883.0f, -12850.0f, 1650.0f, 4217.0f } },
