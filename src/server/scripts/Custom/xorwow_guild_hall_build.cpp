@@ -138,6 +138,11 @@ namespace
     constexpr float SNAP_REACH = 16.0f;         // neighbours looked at: their spot within this of the click
     constexpr float SNAP_TOUCH = 0.05f;         // yards two pieces may share without counting as overlapping
     constexpr float REST_REACH = 1.0f;          // a floor's top this close to the floor clicked on carries what is placed on it
+    constexpr float WALL_PROBE = 1.5f;          // wall decorations: yards above the floor the wall is looked for
+    constexpr float WALL_BEHIND = 2.0f;         // yards back towards the player from the click the look starts (the circle may sit past the wall's face)
+    constexpr float WALL_AHEAD = 3.0f;          // and on past the click it reaches
+    constexpr float WALL_SPREAD = 0.4f;         // yards to each side the two rays that tell the wall's direction go
+    constexpr float WALL_GAP = 0.02f;           // yards left between the wall and a decoration's back
     constexpr float QUARTER = float(M_PI) / 2;
     constexpr uint32 COPY_BASE = 9000000;       // placed objects' own gameobject templates: COPY_BASE + item * COPY_SPAN + copy (GiveCopy)
     constexpr uint32 COPY_SPAN = 1000;
@@ -181,6 +186,7 @@ namespace
         float marker = 0.0f;    // effects, buildings: yards above its spot (at its own size) its marker sphere floats; 0 = none
         float markerX = 0.0f, markerY = 0.0f;   // and how far from its spot, in its own axes (buildings: in front)
         uint32 markerEntry = 0; // buildings: the sphere's own template; 0 = the object's entry
+        bool wall = false;      // a wall decoration: hangs on the wall ahead of its spot (HangOnWall), boxMin.x its back
     };
 
     struct PlacedObject
@@ -1112,6 +1118,12 @@ namespace
             if (placed == objects.end() || !placed->second.count(found->id))
                 return;
             PlacedObject& stored = placed->second[found->id];
+            // a wall decoration stays flat on its wall: placed again, it hangs on the wall there
+            if (CatalogItem const* item = FindItem(stored.item); item && item->wall)
+            {
+                SendError(player, "It hangs flat on its wall: right-click it and put it on another wall instead.");
+                return;
+            }
             // a building kit piece turns in quarter turns: it stays square with its neighbours
             if (CatalogItem const* item = FindItem(stored.item); item && item->snap != SNAP_NONE)
                 degrees = degrees > 0 ? 90 : -90;
@@ -1397,6 +1409,78 @@ namespace
         return loose;
     }
 
+    // The nearest wall a level ray from a to b at height z meets: the hall's own (static collision)
+    // or a placed object's that has collision (dynamic).
+    bool WallHit(Map* map, uint32 phaseMask, G3D::Vector2 const& a, G3D::Vector2 const& b, float z, G3D::Vector2& hit)
+    {
+        float best = FLT_MAX;
+        float rx, ry, rz;
+        if (map->GetMapCollisionData().GetStaticTree().GetObjectHitPos(a.x, a.y, z, b.x, b.y, z, rx, ry, rz, 0.0f))
+        {
+            hit = G3D::Vector2(rx, ry);
+            best = (hit - a).length();
+        }
+        if (map->GetMapCollisionData().GetDynamicTree().GetObjectHitPos(phaseMask, a.x, a.y, z, b.x, b.y, z, rx, ry, rz, 0.0f)
+            && (G3D::Vector2(rx, ry) - a).length() < best)
+        {
+            hit = G3D::Vector2(rx, ry);
+            best = 0.0f;
+        }
+        return best < FLT_MAX;
+    }
+
+    // A wall decoration hangs on the wall ahead of where the circle was put down - at the wall's foot,
+    // or on the wall itself: a ray WALL_PROBE above the floor there, along the line from the player
+    // through the spot, finds the wall, and two more beside it the wall's direction. Its back (the
+    // box's -X, the model's geometry) goes flat against the wall, its front facing out; it stands at
+    // the floor's height, its rise above it as anything else (user, 2026-10-13). False: no wall there.
+    bool HangOnWall(Player* player, CatalogItem const& item, uint32 scale, Position& dest)
+    {
+        Map* map = player->GetMap();
+        uint32 phaseMask = player->GetPhaseMask();
+        float floorZ = map->GetHeight(phaseMask, dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ() + 0.5f, true, 10.0f);
+        if (floorZ <= INVALID_HEIGHT)
+            floorZ = dest.GetPositionZ();
+        float z = floorZ + WALL_PROBE;
+
+        G3D::Vector2 spot(dest.GetPositionX(), dest.GetPositionY());
+        G3D::Vector2 dir = spot - G3D::Vector2(player->GetPositionX(), player->GetPositionY());
+        float reach = dir.length();
+        if (reach > 0.5f)
+            dir /= reach;
+        else
+            dir = G3D::Vector2(std::cos(player->GetOrientation()), std::sin(player->GetOrientation()));
+        G3D::Vector2 start = spot - dir * std::min(WALL_BEHIND, reach);
+        G3D::Vector2 end = spot + dir * WALL_AHEAD;
+
+        G3D::Vector2 hit;
+        if (!WallHit(map, phaseMask, start, end, z, hit))
+            return false;
+
+        // facing out of the wall: square to it when both side rays meet it, else back at the player
+        G3D::Vector2 out = -dir;
+        G3D::Vector2 side(-dir.y, dir.x);
+        G3D::Vector2 left, right;
+        if (WallHit(map, phaseMask, start + side * WALL_SPREAD, end + side * WALL_SPREAD, z, left)
+            && WallHit(map, phaseMask, start - side * WALL_SPREAD, end - side * WALL_SPREAD, z, right))
+        {
+            G3D::Vector2 along = left - right;
+            if (along.length() > 0.01f)
+            {
+                G3D::Vector2 normal = G3D::Vector2(-along.y, along.x) / along.length();
+                if (normal.dot(dir) > 0.0f)
+                    normal = -normal;
+                if (normal.dot(-dir) > 0.3f)   // a corner or an edge between the rays: keep facing the player
+                    out = normal;
+            }
+        }
+
+        G3D::Vector2 at = hit + out * (-item.boxMin.x * scale / 100.0f + WALL_GAP);
+        dest.Relocate(at.x, at.y, floorZ);
+        dest.SetOrientation(Position::NormalizeOrientation(std::atan2(out.y, out.x)));
+        return true;
+    }
+
     // World thread, no map update running: the spell's placement, paid and spawned.
     void Place(Player* player, Position dest)
     {
@@ -1446,7 +1530,16 @@ namespace
             if (CatalogItem const* item = FindItem(placing))
             {
                 std::vector<Piece> pieces = KitPieces(guildId, player->GetMapId(), moveObject);
-                if (item->snap == SNAP_NONE)
+                if (item->wall)
+                {
+                    if (!HangOnWall(player, *item, scale, dest))
+                    {
+                        SendError(player, "No wall there: put the circle at the foot of the wall it should hang on.");
+                        return;
+                    }
+                    snapped = true;   // a moved one takes the new wall's facing too
+                }
+                else if (item->snap == SNAP_NONE)
                     dest.m_positionZ = RestingZ(pieces, dest, player->GetPositionZ());
                 else if (!freePlace)
                 {
@@ -1607,7 +1700,7 @@ namespace
         catalog.clear();
         QueryResult result = WorldDatabase.Query("SELECT id, name, price, team, limit_group, max_count, go_entry, focus_entry, npc_entry, "
             "dest_map, dest_x, dest_y, dest_z, dest_o, enabled, rise, guild_display, snap, box_min_x, box_min_y, box_min_z, "
-            "box_max_x, box_max_y, box_max_z, marker, marker_x, marker_y, marker_entry FROM xorwow_guild_hall_catalog");
+            "box_max_x, box_max_y, box_max_z, marker, marker_x, marker_y, marker_entry, wall FROM xorwow_guild_hall_catalog");
         if (!result)
         {
             LOG_ERROR("server.loading", "XorWoW guild hall: world.xorwow_guild_hall_catalog is empty or missing - build mode has nothing to place.");
@@ -1638,6 +1731,7 @@ namespace
             item.markerX = f[25].Get<float>();
             item.markerY = f[26].Get<float>();
             item.markerEntry = f[27].Get<uint32>();
+            item.wall = f[28].Get<uint8>() != 0;
             if (item.goEntry && !sObjectMgr->GetGameObjectTemplate(item.goEntry))
                 LOG_ERROR("server.loading", "XorWoW guild hall: item {} ({}) has no gameobject_template {}", item.id, item.name, item.goEntry);
             if (item.markerEntry && !sObjectMgr->GetGameObjectTemplate(item.markerEntry))
