@@ -1,5 +1,5 @@
 /*
- * XorWoW: item locks. A player locks an item in the bags or the bank (Alt-right-click in the XorWoW
+ * XorWoW: item locks. A player locks an item in the bags or the bank (Ctrl-right-click in the XorWoW
  * addon) and it cannot leave the character until it is unlocked: no vendor sale or refund, trade,
  * mail, auction, guild bank deposit, destroy, disenchant, prospecting, milling or socketing (gems).
  * The sale is refused through the OnPlayerCanSellItem hook, the rest through Player::XorWoWItemLocked,
@@ -65,7 +65,7 @@ namespace
         if (notify && !player->GetSession()->IsBot() && locks->lastNotice != now)
         {
             locks->lastNotice = now;
-            ChatHandler(player->GetSession()).PSendSysMessage("{} is locked. Alt-right-click it in your bags to unlock it.",
+            ChatHandler(player->GetSession()).PSendSysMessage("{} is locked. Ctrl-right-click it in your bags to unlock it.",
                 item->GetTemplate()->Name1);
         }
         return true;
