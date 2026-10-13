@@ -28,7 +28,7 @@
  *
  * Inside, the city rules: the whole map is one area, "Guild Hall" (4988/4989), with Stormwind's
  * flags - resting, no duels, no free-for-all, the faction's own territory. A ghost released inside
- * appears at the entrance (graveyards 1721/1722).
+ * appears at the entrance (graveyards 1721/1722; the Island of Dr Lapidis: beside its Spirit Healer).
  *
  * The Guildstone (item 260001, 10 gold at every guild tabard vendor) casts Guild Hall
  * teleportation (spell 260001): the Hearthstone's 10 s cast, its own 15 min cooldown, landing at
