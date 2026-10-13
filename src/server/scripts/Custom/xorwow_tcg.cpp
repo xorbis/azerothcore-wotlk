@@ -24,6 +24,16 @@
  * A player who leaves duel range, dies, teleports, changes zone or logs out during a game loses it
  * (counted as "fled" in the record) and the winner still takes the stakes.
  *
+ * Bots: the world's bots (not the alts played by the bot AI) take any challenge at once. The server
+ * plays for them: each bot has a strategy for good (Bad, Poor, Medium, Strong, Perfect, table
+ * xorwow_tcg_bot, rolled once per bot character) that sets how often it plays a move other than the
+ * best one it found, and it builds a deck from every open card whose tiers add up as close as
+ * possible to the challenger's deck. Bots never see a face-down hand. Bot games have no stakes, do not
+ * count for the achievements and keep their own record and history (the stats' Bots tab).
+ *
+ * A win (at the board or by the other one leaving) gives WIN_XP experience, or at the level cap
+ * its worth in money the way quests convert it (6 copper per point).
+ *
  * Achievements: the "XorWoW TCG" category of the achievement window (rows from
  * scripts\client-patch\gen_tcg_achievements.py). Each criteria waits on a spell nobody casts
  * (type 28, spell 269000 + Stat); its count is kept here per account (the record, the streak, the
@@ -39,6 +49,7 @@
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
 #include "Chat.h"
+#include "Config.h"
 #include "Containers.h"
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
@@ -61,6 +72,8 @@
 #include <algorithm>
 #include <array>
 #include <deque>
+#include <functional>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -86,6 +99,9 @@ namespace
     constexpr uint32 ACHIEVEMENT_SPELL_BASE = 269000;
     constexpr uint32 UNDERDOG_GAP = 20;      // deck strength (average tier x 10) the winner was behind by
     constexpr uint32 CLEAN_SWEEP_CARDS = 5;
+    constexpr uint32 SEARCH_BUDGET = 60000;  // positions a bot looks at for one move
+    constexpr uint32 WIN_XP = 1000;
+    constexpr uint32 XP_COPPER = 6;          // a quest's XP turned into money at the level cap
 
     enum Rules : uint32
     {
@@ -141,6 +157,20 @@ namespace
         FEAT_COUNT
     };
 
+    enum Strategy : uint8
+    {
+        STRATEGY_BAD,
+        STRATEGY_POOR,
+        STRATEGY_MEDIUM,
+        STRATEGY_STRONG,
+        STRATEGY_PERFECT,
+        STRATEGY_COUNT
+    };
+    constexpr std::array<char const*, STRATEGY_COUNT> STRATEGY_NAMES = { "Bad", "Poor", "Medium", "Strong", "Perfect" };
+    constexpr std::array<uint32, STRATEGY_COUNT> STRATEGY_ERROR = { 60, 40, 25, 10, 0 };    // % of moves not the best one found
+    // how often a bot is given each: a bell curve round Medium (binomial 1:4:6:4:1, about 6/25/38/25/6 %)
+    constexpr std::array<uint32, STRATEGY_COUNT> STRATEGY_WEIGHT = { 1, 4, 6, 4, 1 };
+
     struct Card
     {
         uint32 id = 0;
@@ -179,6 +209,7 @@ namespace
         std::array<uint32, HAND> deck{};
         uint32 wins = 0, losses = 0, draws = 0, fled = 0, cardsWon = 0, cardsLost = 0;
         uint32 streak = 0, bestStreak = 0, feats = 0;
+        uint32 botWins = 0, botLosses = 0, botDraws = 0, botFled = 0;   // games against bots, apart
     };
 
     std::unordered_map<uint32, Account> accounts;
@@ -194,8 +225,9 @@ namespace
     void SaveAccount(uint32 accountId, Account const& a)
     {
         CharacterDatabase.DirectExecute("REPLACE INTO `xorwow_tcg_account` (`account`, `deck`, `wins`, `losses`, `draws`, `fled`, `cards_won`, `cards_lost`, "
-            "`streak`, `best_streak`, `feats`) VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {})", accountId, DeckString(a), a.wins, a.losses,
-            a.draws, a.fled, a.cardsWon, a.cardsLost, a.streak, a.bestStreak, a.feats);
+            "`streak`, `best_streak`, `feats`, `bot_wins`, `bot_losses`, `bot_draws`, `bot_fled`) VALUES ({}, '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {})",
+            accountId, DeckString(a), a.wins, a.losses, a.draws, a.fled, a.cardsWon, a.cardsLost, a.streak, a.bestStreak, a.feats,
+            a.botWins, a.botLosses, a.botDraws, a.botFled);
     }
 
     void SaveCount(uint32 accountId, Account const& a, uint32 card)
@@ -239,7 +271,7 @@ namespace
         }
 
         if (QueryResult result = CharacterDatabase.Query("SELECT `deck`, `wins`, `losses`, `draws`, `fled`, `cards_won`, `cards_lost`, "
-            "`streak`, `best_streak`, `feats` FROM `xorwow_tcg_account` WHERE `account` = {}", accountId))
+            "`streak`, `best_streak`, `feats`, `bot_wins`, `bot_losses`, `bot_draws`, `bot_fled` FROM `xorwow_tcg_account` WHERE `account` = {}", accountId))
         {
             Field* f = result->Fetch();
             uint32 i = 0;
@@ -256,6 +288,10 @@ namespace
             a.streak = f[7].Get<uint32>();
             a.bestStreak = f[8].Get<uint32>();
             a.feats = f[9].Get<uint32>();
+            a.botWins = f[10].Get<uint32>();
+            a.botLosses = f[11].Get<uint32>();
+            a.botDraws = f[12].Get<uint32>();
+            a.botFled = f[13].Get<uint32>();
             // a deck saved before lost cards left it
             if (PruneDeck(a))
                 SaveAccount(accountId, a);
@@ -313,6 +349,11 @@ namespace
             if (Card const* card = GetCard(id))
                 sum += card->tier;
         return sum * 10 / HAND;
+    }
+
+    uint32 DeckTierSum(std::array<uint32, HAND> const& deck)
+    {
+        return DeckStrength(deck) * HAND / 10;
     }
 
     // --- achievements -----------------------------------------------------------------------------
@@ -376,7 +417,7 @@ namespace
 
     void Send(Player* player, std::string const& body)
     {
-        if (!player)
+        if (!player || player->GetSession()->IsBot())
             return;
         WorldPacket data;
         ChatHandler::BuildChatPacket(data, CHAT_MSG_WHISPER, LANG_ADDON, player, player, Acore::StringFormat("{}\tTCG;{}", ADDON_PREFIX, body));
@@ -385,7 +426,7 @@ namespace
 
     void Notice(Player* player, std::string const& text)
     {
-        if (player)
+        if (player && !player->GetSession()->IsBot())
             ChatHandler(player->GetSession()).SendSysMessage(Acore::StringFormat("|cffe8c46eXorWoW TCG:|r {}", text));
     }
 
@@ -430,19 +471,22 @@ namespace
     void SendStats(Player* player, uint32 accountId, Account const& a)
     {
         Send(player, Acore::StringFormat("STATS;{};{};{};{};{};{}", a.wins, a.losses, a.draws, a.fled, a.cardsWon, a.cardsLost));
+        Send(player, Acore::StringFormat("BSTATS;{};{};{};{}", a.botWins, a.botLosses, a.botDraws, a.botFled));
         Send(player, "HIST;R");
         uint32 now = uint32(GameTime::GetGameTime().count());
-        if (QueryResult result = CharacterDatabase.Query("SELECT `opponent`, `result`, `score`, `opponent_score`, `stakes`, `place`, `time` "
-            "FROM `xorwow_tcg_history` WHERE `account` = {} ORDER BY `id` DESC LIMIT {}", accountId, HISTORY_SHOWN))
-        {
-            do
+        // the last games against players, then against bots (the last field: 0 a player, else the bot's strategy + 1)
+        for (char const* which : { "`bot` = 0", "`bot` > 0" })
+            if (QueryResult result = CharacterDatabase.Query("SELECT `opponent`, `result`, `score`, `opponent_score`, `stakes`, `place`, `time`, `bot` "
+                "FROM `xorwow_tcg_history` WHERE `account` = {} AND {} ORDER BY `id` DESC LIMIT {}", accountId, which, HISTORY_SHOWN))
             {
-                Field* f = result->Fetch();
-                uint32 when = f[6].Get<uint32>();
-                Send(player, Acore::StringFormat("HIST;{};{};{};{};{};{};{}", f[0].Get<std::string>(), f[1].Get<uint32>(), f[2].Get<uint32>(),
-                    f[3].Get<uint32>(), f[4].Get<std::string>(), f[5].Get<std::string>(), now > when ? now - when : 0));
-            } while (result->NextRow());
-        }
+                do
+                {
+                    Field* f = result->Fetch();
+                    uint32 when = f[6].Get<uint32>();
+                    Send(player, Acore::StringFormat("HIST;{};{};{};{};{};{};{};{}", f[0].Get<std::string>(), f[1].Get<uint32>(), f[2].Get<uint32>(),
+                        f[3].Get<uint32>(), f[4].Get<std::string>(), f[5].Get<std::string>(), now > when ? now - when : 0, f[7].Get<uint32>()));
+                } while (result->NextRow());
+            }
     }
 
     // --- games ------------------------------------------------------------------------------------
@@ -455,6 +499,8 @@ namespace
         std::array<uint32, HAND> deck{};     // the deck it came with: what a bet takes from
         std::vector<uint32> hand;            // the round's hand, played cards set to 0
         float x = 0.0f, y = 0.0f, z = 0.0f;  // where it stood when the game began
+        bool bot = false;                    // played by the server: no account, no record
+        uint8 strategy = STRATEGY_MEDIUM;
     };
 
     struct Cell
@@ -489,6 +535,8 @@ namespace
         std::array<Result, 2> results{};
         std::array<uint32, 2> scores{};
         std::array<uint32, 2> feats{};      // feats done this game, not given yet
+        bool vsBot = false;
+        time_t botAt = 0;                   // when the bot whose turn it is plays (it "thinks" a moment)
     };
 
     struct Challenge
@@ -544,9 +592,9 @@ namespace
     {
         if (!player || !player->IsInWorld())
             return "is not here";
-        if (player->GetSession()->IsBot())
-            return "is a bot: XorWoW TCG is for players";
-        if (!withAddon.count(player->GetGUID()))
+        if (player->GetSession()->IsBot() && player->GetSession()->GetBotNameMark() != '*')
+            return "is an alt played by the bot AI: only the world's bots play XorWoW TCG";
+        if (!player->GetSession()->IsBot() && !withAddon.count(player->GetGUID()))
             return "does not have the XorWoW addon";
         if (playerGame.count(player->GetGUID()))
             return "is already in a game";
@@ -556,6 +604,8 @@ namespace
             return "is in combat";
         if (player->InBattleground() || player->InArena())
             return "is in a battleground";
+        if (player->IsInFlight() || player->IsBeingTeleported())
+            return "is travelling";
         return "";
     }
 
@@ -588,8 +638,9 @@ namespace
                 for (size_t i = 0; i < g.seats[1 - s].hand.size(); ++i)
                     hands[1 - s] += i ? ",?" : "?";
             }
-            Send(SeatPlayer(g, s), Acore::StringFormat("START;{};{};{};{};{};{};{};{};{};{}", g.id, g.seats[1 - s].name, g.rules, g.stake, s,
-                hands[0], hands[1], SquaresString(g), g.first, g.round));
+            Seat const& foe = g.seats[1 - s];
+            Send(SeatPlayer(g, s), Acore::StringFormat("START;{};{};{};{};{};{};{};{};{};{};{}", g.id, foe.name, g.rules, g.stake, s,
+                hands[0], hands[1], SquaresString(g), g.first, g.round, foe.bot ? STRATEGY_NAMES[foe.strategy] : ""));
         }
         SendBoth(g, Acore::StringFormat("TURN;{};{};{}", g.id, g.turn, TURN_SECONDS));
     }
@@ -614,7 +665,7 @@ namespace
     }
 
     // The plain capture: the card at "from" against each enemy neighbour, counters included.
-    void Capture(Game& g, uint32 from, char cause, std::vector<std::string>& events, std::vector<uint32>* flipped)
+    void Capture(Game& g, uint32 from, char cause, std::vector<std::string>* events, std::vector<uint32>* flipped)
     {
         uint8 seat = g.board[from].seat;
         Card const* mine = GetCard(g.board[from].card);
@@ -629,28 +680,30 @@ namespace
             if (Beats(mine->element, theirs->element))
             {
                 ++attack;
-                events.push_back(Acore::StringFormat("K:{}:{}", from + 1, side));
+                if (events)
+                    events->push_back(Acore::StringFormat("K:{}:{}", from + 1, side));
             }
             if (Beats(theirs->element, mine->element))
             {
                 ++defend;
-                events.push_back(Acore::StringFormat("K:{}:{}", n + 1, opposite));
+                if (events)
+                    events->push_back(Acore::StringFormat("K:{}:{}", n + 1, opposite));
             }
             if (attack > defend)
             {
                 g.board[n].seat = seat;
-                events.push_back(Acore::StringFormat("F:{}:{}:{}", n + 1, seat, cause));
+                if (events)
+                    events->push_back(Acore::StringFormat("F:{}:{}:{}", n + 1, seat, cause));
                 if (flipped)
                     flipped->push_back(uint32(n));
             }
         }
     }
 
-    // Places a card and plays out Same, Plus, the captures and the combos. Returns the events the
-    // addon animates, in order.
-    std::vector<std::string> Place(Game& g, uint8 seat, uint32 handIndex, uint32 cell)
+    // Places a card and plays out Same, Plus, the captures and the combos, adding the events the
+    // addon animates to "events" in order (none when a bot tries moves out).
+    void Place(Game& g, uint8 seat, uint32 handIndex, uint32 cell, std::vector<std::string>* events)
     {
-        std::vector<std::string> events;
         uint32 cardId = g.seats[seat].hand[handIndex];
         g.seats[seat].hand[handIndex] = 0;
         Card const* card = GetCard(cardId);
@@ -661,8 +714,8 @@ namespace
         if (g.squares[cell])
         {
             c.squareMod = card->element == g.squares[cell] ? 1 : card->element ? -1 : 0;
-            if (c.squareMod)
-                events.push_back(Acore::StringFormat("S:{}:{}", cell + 1, c.squareMod));
+            if (c.squareMod && events)
+                events->push_back(Acore::StringFormat("S:{}:{}", cell + 1, c.squareMod));
         }
 
         // Same and Plus, on the printed numbers
@@ -701,7 +754,8 @@ namespace
             if (cause == 'S' && wallCount)
                 g.feats[seat] |= 1u << FEAT_SAME_WALL;
             g.board[n].seat = seat;
-            events.push_back(Acore::StringFormat("F:{}:{}:{}", n + 1, seat, cause));
+            if (events)
+                events->push_back(Acore::StringFormat("F:{}:{}:{}", n + 1, seat, cause));
             special.push_back(uint32(n));
         };
         if ((g.rules & RULE_SAME) && sameCount >= 2)
@@ -727,7 +781,6 @@ namespace
                 g.feats[seat] |= 1u << FEAT_COMBO;
             queue.insert(queue.end(), more.begin(), more.end());
         }
-        return events;
     }
 
     void Score(Game const& g, uint32& s0, uint32& s1)
@@ -744,13 +797,23 @@ namespace
 
     void Release(Game const& g)
     {
-        playerGame.erase(g.seats[0].guid);
-        playerGame.erase(g.seats[1].guid);
+        for (uint8 s = 0; s < 2; ++s)
+        {
+            playerGame.erase(g.seats[s].guid);
+            if (g.seats[s].bot)
+                if (Player* bot = SeatPlayer(g, s))
+                    bot->GetSession()->SetInTcgGame(false);
+        }
     }
 
     // The game's feats so far go to the seat's account, and its character's achievements are updated.
     void GiveFeats(Game& g, uint8 seat)
     {
+        if (g.vsBot)
+        {
+            g.feats[seat] = 0;   // bot games earn no achievements
+            return;
+        }
         Seat const& s = g.seats[seat];
         Account& a = GetAccount(s.account);
         if ((a.feats | g.feats[seat]) != a.feats)
@@ -762,10 +825,55 @@ namespace
         SyncAchievements(SeatPlayer(g, seat), s.account, a);
     }
 
+    std::string MoneyText(uint32 copper)
+    {
+        std::string text;
+        if (copper >= 10000)
+            text += Acore::StringFormat("{}g ", copper / 10000);
+        if (copper % 10000 >= 100)
+            text += Acore::StringFormat("{}s ", copper % 10000 / 100);
+        if (copper % 100)
+            text += Acore::StringFormat("{}c ", copper % 100);
+        return text.empty() ? "0c" : text.substr(0, text.size() - 1);
+    }
+
+    // The winner's prize: WIN_XP experience, or its worth in money once it cannot level any more.
+    void RewardWin(Player* player)
+    {
+        if (!player || player->GetSession()->IsBot())
+            return;
+        if (player->GetLevel() < sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL) && !player->HasPlayerFlag(PLAYER_FLAGS_NO_XP_GAIN))
+        {
+            player->GiveXP(WIN_XP, nullptr);
+            Notice(player, Acore::StringFormat("You gain {} experience for the win.", WIN_XP));
+            return;
+        }
+        uint32 money = WIN_XP * XP_COPPER;
+        player->ModifyMoney(money);
+        Notice(player, Acore::StringFormat("You receive {} for the win.", MoneyText(money)));
+    }
+
     void CountResult(Game const& g, uint8 seat, Result result)
     {
         Seat const& s = g.seats[seat];
+        if (s.bot)
+            return;
+        if (result == RESULT_WIN || result == RESULT_OPPONENT_FLED)
+            RewardWin(SeatPlayer(g, seat));
         Account& a = GetAccount(s.account);
+        if (g.vsBot)
+        {
+            // against a bot: its own record, and the streak is left alone
+            switch (result)
+            {
+                case RESULT_WIN: case RESULT_OPPONENT_FLED: ++a.botWins; break;
+                case RESULT_LOSS: ++a.botLosses; break;
+                case RESULT_FLED: ++a.botLosses; ++a.botFled; break;
+                default: ++a.botDraws; break;
+            }
+            SaveAccount(s.account, a);
+            return;
+        }
         switch (result)
         {
             case RESULT_WIN: case RESULT_OPPONENT_FLED: ++a.wins; break;
@@ -783,12 +891,16 @@ namespace
     void WriteHistory(Game const& g, uint8 seat, Result result, uint32 mine, uint32 theirs, std::string const& stakes)
     {
         Seat const& s = g.seats[seat];
+        if (s.bot)
+            return;
+        Seat const& foe = g.seats[1 - seat];
         std::string opponent = g.seats[1 - seat].name, st = stakes, place = g.place;
         CharacterDatabase.EscapeString(opponent);
         CharacterDatabase.EscapeString(st);
         CharacterDatabase.EscapeString(place);
-        CharacterDatabase.DirectExecute("INSERT INTO `xorwow_tcg_history` (`account`, `opponent`, `result`, `score`, `opponent_score`, `stakes`, `place`, `time`) "
-            "VALUES ({}, '{}', {}, {}, {}, '{}', '{}', {})", s.account, opponent, uint32(result), mine, theirs, st, place, uint32(Now()));
+        CharacterDatabase.DirectExecute("INSERT INTO `xorwow_tcg_history` (`account`, `opponent`, `result`, `score`, `opponent_score`, `stakes`, `place`, `time`, `bot`) "
+            "VALUES ({}, '{}', {}, {}, {}, '{}', '{}', {}, {})", s.account, opponent, uint32(result), mine, theirs, st, place, uint32(Now()),
+            foe.bot ? foe.strategy + 1 : 0);
     }
 
     std::string StakeName(uint32 stake)
@@ -814,8 +926,9 @@ namespace
         for (uint8 s = 0; s < 2; ++s)
         {
             GiveFeats(g, s);
-            if (Player* p = SeatPlayer(g, s))
-                SendStats(p, g.seats[s].account, GetAccount(g.seats[s].account));
+            if (!g.seats[s].bot)
+                if (Player* p = SeatPlayer(g, s))
+                    SendStats(p, g.seats[s].account, GetAccount(g.seats[s].account));
         }
         Release(g);
         uint32 id = g.id;   // g is the map's element: erase by a copy of its key
@@ -956,7 +1069,8 @@ namespace
 
     void Play(Game& g, uint8 seat, uint32 handIndex, uint32 cell)
     {
-        std::vector<std::string> events = Place(g, seat, handIndex, cell);
+        std::vector<std::string> events;
+        Place(g, seat, handIndex, cell, &events);
         std::string ev;
         for (std::string const& e : events)
             ev += (ev.empty() ? "" : ",") + e;
@@ -994,6 +1108,321 @@ namespace
     {
         AreaTableEntry const* area = sAreaTableStore.LookupEntry(zoneId);
         return area ? area->area_name[0] : "";
+    }
+
+    // --- bots -------------------------------------------------------------------------------------
+
+    std::unordered_map<uint32, uint8> botStrategies;     // by character guid
+
+    uint8 RollStrategy()
+    {
+        uint32 total = 0;
+        for (uint32 w : STRATEGY_WEIGHT)
+            total += w;
+        uint32 roll = urand(0, total - 1);
+        for (uint8 i = 0; i < STRATEGY_COUNT; ++i)
+        {
+            if (roll < STRATEGY_WEIGHT[i])
+                return i;
+            roll -= STRATEGY_WEIGHT[i];
+        }
+        return STRATEGY_MEDIUM;
+    }
+
+    // The bot's strategy, rolled and kept the first time it is asked for.
+    uint8 BotStrategy(ObjectGuid guid)
+    {
+        auto itr = botStrategies.find(guid.GetCounter());
+        if (itr != botStrategies.end())
+            return itr->second;
+        uint8 strategy = RollStrategy();
+        botStrategies[guid.GetCounter()] = strategy;
+        CharacterDatabase.Execute("INSERT IGNORE INTO `xorwow_tcg_bot` (`guid`, `strategy`) VALUES ({}, {})", guid.GetCounter(), strategy);
+        return strategy;
+    }
+
+    // Loads the bots' strategies and gives one to every character of the random bot accounts that
+    // has none yet (bots made later get theirs when first asked).
+    void LoadBotStrategies()
+    {
+        botStrategies.clear();
+        if (QueryResult result = CharacterDatabase.Query("SELECT `guid`, `strategy` FROM `xorwow_tcg_bot`"))
+        {
+            do
+            {
+                Field* f = result->Fetch();
+                botStrategies[f[0].Get<uint32>()] = std::min<uint8>(f[1].Get<uint8>(), STRATEGY_COUNT - 1);
+            } while (result->NextRow());
+        }
+
+        std::string prefix = sConfigMgr->GetOption<std::string>("AiPlayerbot.RandomBotAccountPrefix", "rndbot", false);
+        LoginDatabase.EscapeString(prefix);
+        std::string accountIds;
+        if (QueryResult result = LoginDatabase.Query("SELECT `id` FROM `account` WHERE `username` LIKE '{}%'", prefix))
+        {
+            do
+                accountIds += (accountIds.empty() ? "" : ",") + std::to_string((*result)[0].Get<uint32>());
+            while (result->NextRow());
+        }
+        uint32 added = 0;
+        std::string values;
+        auto flush = [&]()
+        {
+            if (!values.empty())
+                CharacterDatabase.DirectExecute("INSERT IGNORE INTO `xorwow_tcg_bot` (`guid`, `strategy`) VALUES {}", values);
+            values.clear();
+        };
+        if (!accountIds.empty())
+            if (QueryResult result = CharacterDatabase.Query("SELECT `guid` FROM `characters` WHERE `account` IN ({})", accountIds))
+            {
+                do
+                {
+                    uint32 guid = (*result)[0].Get<uint32>();
+                    if (botStrategies.count(guid))
+                        continue;
+                    uint8 strategy = RollStrategy();
+                    botStrategies[guid] = strategy;
+                    values += Acore::StringFormat("{}({}, {})", values.empty() ? "" : ",", guid, strategy);
+                    if (++added % 500 == 0)
+                        flush();
+                } while (result->NextRow());
+            }
+        flush();
+        std::array<uint32, STRATEGY_COUNT> counts{};
+        for (auto const& [guid, strategy] : botStrategies)
+            ++counts[strategy];
+        LOG_INFO("server.loading", ">> XorWoW TCG: {} bot strategies ({} new): Bad {}, Poor {}, Medium {}, Strong {}, Perfect {}",
+            botStrategies.size(), added, counts[0], counts[1], counts[2], counts[3], counts[4]);
+    }
+
+    // A bot's deck: 5 open cards whose tiers add up as close as possible to "target" (the
+    // challenger's deck), within the deck rules; the closest tier sets are drawn at random.
+    std::array<uint32, HAND> BuildBotDeck(uint32 target)
+    {
+        std::array<std::vector<uint32>, 11> byTier;
+        for (Card const& card : cards)
+            if (card.id && card.era <= OpenEra() && card.tier >= 1 && card.tier <= 10)
+                byTier[card.tier].push_back(card.id);
+
+        std::vector<std::array<uint32, HAND>> closest;
+        uint32 bestGap = std::numeric_limits<uint32>::max();
+        std::array<uint32, HAND> tiers{};
+        std::function<void(uint32, uint32)> walk = [&](uint32 i, uint32 from)
+        {
+            if (i == HAND)
+            {
+                uint32 sum = 0, top = 0, high = 0;
+                std::array<uint32, 11> used{};
+                for (uint32 t : tiers)
+                {
+                    sum += t;
+                    top += t >= 9;
+                    high += t >= 7;
+                    ++used[t];
+                }
+                if (top > 1 || high > 2)
+                    return;
+                for (uint32 t = 1; t <= 10; ++t)
+                    if (used[t] > byTier[t].size())
+                        return;
+                uint32 gap = sum > target ? sum - target : target - sum;
+                if (gap < bestGap)
+                {
+                    bestGap = gap;
+                    closest.clear();
+                }
+                if (gap == bestGap)
+                    closest.push_back(tiers);
+                return;
+            }
+            for (uint32 t = from; t <= 10; ++t)
+            {
+                tiers[i] = t;
+                walk(i + 1, t);
+            }
+        };
+        walk(0, 1);
+
+        std::array<uint32, HAND> deck{};
+        if (closest.empty())
+            return deck;
+        std::array<uint32, HAND> const& pick = Acore::Containers::SelectRandomContainerElement(closest);
+        uint32 i = 0;
+        for (uint32 t = 1; t <= 10; ++t)
+        {
+            uint32 n = uint32(std::count(pick.begin(), pick.end(), t));
+            if (!n)
+                continue;
+            std::vector<uint32> pool = byTier[t];
+            Acore::Containers::RandomShuffle(pool);
+            for (uint32 j = 0; j < n; ++j)
+                deck[i++] = pool[j];
+        }
+        std::vector<uint32> order(deck.begin(), deck.end());
+        Acore::Containers::RandomShuffle(order);
+        std::copy(order.begin(), order.end(), deck.begin());
+        return deck;
+    }
+
+    // How good the board is for "seat": the score difference, less a little for each weak side
+    // its cards leave open to an empty square (and the other way round for the foe's).
+    double Evaluate(Game const& g, uint8 seat)
+    {
+        uint32 s0, s1;
+        Score(g, s0, s1);
+        double v = seat ? double(s1) - double(s0) : double(s0) - double(s1);
+        for (uint32 c = 0; c < 9; ++c)
+        {
+            if (!g.board[c].card)
+                continue;
+            for (uint32 side = 0; side < 4; ++side)
+            {
+                int n = Neighbour(c, side);
+                if (n < 0 || g.board[n].card)
+                    continue;
+                double weak = (10 - Value(g, c, side)) * 0.012;
+                v += g.board[c].seat == seat ? -weak : weak;
+            }
+        }
+        return v;
+    }
+
+    // Negamax with alpha-beta: the best "toMove" can reach, from its side.
+    double Search(Game const& g, uint8 toMove, int depth, double alpha, double beta, uint32& budget)
+    {
+        if (g.placed >= 9 || depth <= 0 || !budget)
+            return Evaluate(g, toMove);
+        --budget;
+        double best = -std::numeric_limits<double>::infinity();
+        bool any = false;
+        std::vector<uint32> const& hand = g.seats[toMove].hand;
+        for (uint32 i = 0; i < hand.size(); ++i)
+        {
+            if (!hand[i])
+                continue;
+            for (uint32 c = 0; c < 9; ++c)
+            {
+                if (g.board[c].card)
+                    continue;
+                Game next = g;
+                Place(next, toMove, i, c, nullptr);
+                ++next.placed;
+                double v = -Search(next, uint8(1 - toMove), depth - 1, -beta, -alpha, budget);
+                any = true;
+                best = std::max(best, v);
+                alpha = std::max(alpha, v);
+                if (alpha >= beta)
+                    return best;
+            }
+        }
+        return any ? best : Evaluate(g, toMove);
+    }
+
+    // The bot whose turn it is plays. It weighs every move it has: with Open it looks ahead at the
+    // replies (to the end of the round once 6 squares or fewer are left), without it only at the
+    // board it leaves, as it cannot see the hidden hand. Then, as often as its strategy says, it
+    // plays one of the worse moves instead of the best.
+    void BotPlay(Game& g)
+    {
+        uint8 me = g.turn;
+        uint32 empty = 9 - g.placed;
+        int depth = !(g.rules & RULE_OPEN) ? 1 : empty <= 6 ? int(empty) : empty == 7 ? 3 : 2;
+        uint32 budget = SEARCH_BUDGET;
+
+        struct Move { uint32 hand, cell; double value; };
+        std::vector<Move> moves;
+        std::vector<uint32> const& hand = g.seats[me].hand;
+        for (uint32 i = 0; i < hand.size(); ++i)
+        {
+            if (!hand[i])
+                continue;
+            for (uint32 c = 0; c < 9; ++c)
+            {
+                if (g.board[c].card)
+                    continue;
+                Game next = g;
+                Place(next, me, i, c, nullptr);
+                ++next.placed;
+                double v = -Search(next, uint8(1 - me), depth - 1, -std::numeric_limits<double>::infinity(),
+                    std::numeric_limits<double>::infinity(), budget);
+                moves.push_back({ i, c, v });
+            }
+        }
+        if (moves.empty())
+            return;
+
+        double best = std::max_element(moves.begin(), moves.end(), [](Move const& a, Move const& b) { return a.value < b.value; })->value;
+        std::vector<Move> top, worse;
+        for (Move const& m : moves)
+            (m.value >= best - 0.001 ? top : worse).push_back(m);
+        bool mistake = !worse.empty() && urand(1, 100) <= STRATEGY_ERROR[g.seats[me].strategy];
+        Move const& m = Acore::Containers::SelectRandomContainerElement(mistake ? worse : top);
+        Play(g, me, m.hand, m.cell);
+    }
+
+    // A challenge to one of the world's bots: it accepts at once, stops where it stands and plays
+    // with a deck built to match the challenger's.
+    void StartBotGame(Player* player, Player* bot, uint32 rules, uint32 stake)
+    {
+        Account& mine = GetAccount(player->GetSession()->GetAccountId());
+        std::array<uint32, HAND> botDeck = BuildBotDeck(DeckTierSum(mine.deck));
+        if (!GetCard(botDeck[0]))
+            return SendError(player, "No cards are in play for a bot's deck.");
+        uint8 strategy = BotStrategy(bot->GetGUID());
+
+        Game g;
+        g.id = nextId++;
+        g.rules = rules;
+        g.stake = STAKE_NONE;
+        g.vsBot = true;
+        Player* players[2] = { player, bot };
+        for (uint8 s = 0; s < 2; ++s)
+        {
+            Seat& seat = g.seats[s];
+            seat.guid = players[s]->GetGUID();
+            seat.name = players[s]->GetName();
+            players[s]->GetPosition(seat.x, seat.y, seat.z);
+            playerGame[seat.guid] = g.id;
+        }
+        g.seats[0].account = player->GetSession()->GetAccountId();
+        g.seats[0].deck = mine.deck;
+        g.seats[1].bot = true;
+        g.seats[1].strategy = strategy;
+        g.seats[1].deck = botDeck;
+        for (Seat& seat : g.seats)
+            seat.hand.assign(seat.deck.begin(), seat.deck.end());
+
+        bot->GetSession()->SetInTcgGame(true);
+        bot->StopMoving();
+        bot->GetMotionMaster()->Clear();
+        bot->GetMotionMaster()->MoveIdle();
+        bot->SetFacingToObject(player);
+
+        g.mapId = player->GetMapId();
+        g.instanceId = player->GetInstanceId();
+        g.zoneId = player->GetZoneId();
+        g.place = ZoneName(g.zoneId);
+        Notice(player, Acore::StringFormat("{} accepts ({} player, deck strength {}.{}){}.", bot->GetName(), STRATEGY_NAMES[strategy],
+            DeckStrength(botDeck) / 10, DeckStrength(botDeck) % 10, stake != STAKE_NONE ? ": games against bots have no stakes" : ""));
+        uint32 id = g.id;
+        games[id] = g;
+        StartRound(games[id]);
+    }
+
+    // Who the challenge window is for: "WHO;<name>;P" a player (or nobody here), "A" an altbot,
+    // "B;<strategy>;<name of it>" one of the world's bots.
+    void HandleWho(Player* player, std::vector<std::string_view> const& args)
+    {
+        if (args.size() < 2)
+            return;
+        std::string name(args[1]);
+        Player* target = ObjectAccessor::FindPlayerByName(name, true);
+        if (!target || !target->GetSession()->IsBot())
+            return Send(player, Acore::StringFormat("WHO;{};P", name));
+        if (target->GetSession()->GetBotNameMark() != '*')
+            return Send(player, Acore::StringFormat("WHO;{};A", target->GetName()));
+        uint8 strategy = BotStrategy(target->GetGUID());
+        Send(player, Acore::StringFormat("WHO;{};B;{};{}", target->GetName(), strategy, STRATEGY_NAMES[strategy]));
     }
 
     // --- commands from the addon ------------------------------------------------------------------
@@ -1057,6 +1486,9 @@ namespace
             return SendError(player, target->GetName() + " " + why + ".");
         if (!InRange(player, target, 0.0f))
             return SendError(player, Acore::StringFormat("{} is too far: come within {} yards, like for a duel.", target->GetName(), uint32(duelRange)));
+        if (target->GetSession()->IsBot())
+            return StartBotGame(player, target, Acore::StringTo<uint32>(args[2]).value_or(0) & RULE_ALL,
+                Acore::StringTo<uint32>(args[3]).value_or(0));
         for (auto const& [id, c] : challenges)
             if (c.from == target->GetGUID() || c.to == target->GetGUID())
                 return SendError(player, target->GetName() + " is answering another challenge.");
@@ -1260,6 +1692,8 @@ namespace
             HandleForfeit(player, args);
         else if (cmd == "TAKE")
             HandleTake(player, args);
+        else if (cmd == "WHO")
+            HandleWho(player, args);
         else if (cmd == "STATS")
             SendStats(player, player->GetSession()->GetAccountId(), GetAccount(player->GetSession()->GetAccountId()));
     }
@@ -1376,6 +1810,17 @@ namespace
                 }
                 if (ended)
                     continue;
+                if (g.seats[g.turn].bot)
+                {
+                    if (!g.botAt)
+                        g.botAt = now + urand(2, 4);
+                    else if (now >= g.botAt)
+                    {
+                        g.botAt = 0;
+                        BotPlay(g);   // may end the round or the game, and erase it
+                        continue;
+                    }
+                }
                 if (now >= g.deadline)
                     AutoPlay(g);
             }
@@ -1452,6 +1897,7 @@ public:
     void OnStartup() override
     {
         LoadCards();
+        LoadBotStrategies();
     }
 
     void OnUpdate(uint32 diff) override

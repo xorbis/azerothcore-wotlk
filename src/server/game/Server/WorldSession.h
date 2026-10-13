@@ -1238,6 +1238,10 @@ public:                                                 // opcodes handlers
     [[nodiscard]] char GetBotNameMark() const { return _isBot ? _botNameMark : 0; }
     void SetBotNameMark(char mark) { _botNameMark = mark; }
 
+    // XorWoW: a bot sitting at an XorWoW TCG game (xorwow_tcg.cpp); mod-playerbots leaves it idle meanwhile
+    [[nodiscard]] bool IsInTcgGame() const { return _inTcgGame; }
+    void SetInTcgGame(bool playing) { _inTcgGame = playing; }
+
 private:
     void ProcessQueryCallbacks();
 
@@ -1356,6 +1360,7 @@ private:
 
     bool _isBot;
     char _botNameMark = '*';
+    bool _inTcgGame = false;
 
     WorldSession(WorldSession const& right) = delete;
     WorldSession& operator=(WorldSession const& right) = delete;
