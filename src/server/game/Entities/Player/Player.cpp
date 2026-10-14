@@ -1130,6 +1130,10 @@ void Player::setDeathState(DeathState s, bool /*despawn = false*/)
     if (NeedSendSpectatorData())
         ArenaSpectator::SendCommand_UInt32Value(FindMap(), GetGUID(), "STA", IsAlive() ? 1 : 0);
 
+    // XorWoW: the charm aura is gone now, nothing of the mind control may survive the death
+    if (s == DeathState::JustDied)
+        ClearLeftoverCharm("death");
+
     // restore resurrection spell id for player after aura remove
     if (s == DeathState::JustDied && cur && ressSpellId)
         SetUInt32Value(PLAYER_SELF_RES_SPELL, ressSpellId);
@@ -4598,6 +4602,8 @@ void Player::ResurrectPlayer(float restore_percent, bool applySickness)
     SetWaterWalking(false);
     m_deathTimer = 0;
 
+    ClearLeftoverCharm("resurrection");
+
     // set health/powers (0- will be set in caller)
     if (restore_percent > 0.0f)
     {
@@ -4651,6 +4657,54 @@ void Player::ResurrectPlayer(float restore_percent, bool applySickness)
             }
         }
     }
+}
+
+// XorWoW: a player mind controlled by Jin'do's Brain Wash Totem could die, get resurrected and still be
+// hostile to the raid until killed a second time. Whatever was left behind (charm aura, charmer guid,
+// charm faction), undo it at death and at resurrection, and log it so the real cause can be found.
+void Player::ClearLeftoverCharm(char const* when)
+{
+    bool const charmAura = HasAuraType(SPELL_AURA_MOD_CHARM) || HasAuraType(SPELL_AURA_AOE_CHARM);
+    ObjectGuid const charmerGuid = GetCharmerGUID();
+    ChrRacesEntry const* raceEntry = sChrRacesStore.LookupEntry(getRace());
+    bool const wrongFaction = raceEntry && GetTeamId(true) == GetTeamId() && GetFaction() != raceEntry->FactionID;
+    bool const notControlled = !HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED);
+
+    if (!charmAura && !charmerGuid && !wrongFaction && !notControlled)
+        return;
+
+    LOG_WARN("entities.player", "XorWoW: {} left charmed after {} (charm aura {}, charmer {}, faction {} race faction {} old faction {}, player controlled {}), cleaning up",
+        GetName(), when, charmAura, charmerGuid.ToString(), GetFaction(), raceEntry ? raceEntry->FactionID : 0, GetOldFactionId(), !notControlled);
+
+    RemoveCharmAuras();
+
+    if (GetCharmerGUID())
+        RemoveCharmedBy(nullptr);
+
+    // RemoveCharmedBy stops early when the charmer is gone and leaves its guid behind
+    if (GetCharmerGUID())
+    {
+        if (Unit* charmer = GetCharmer())
+            charmer->SetCharm(this, false);
+        else
+            SetGuidValue(UNIT_FIELD_CHARMEDBY, ObjectGuid::Empty);
+
+        ClearUnitState(UNIT_STATE_CHARMED);
+        DeleteCharmInfo();
+    }
+
+    if (raceEntry && GetTeamId(true) == GetTeamId() && GetFaction() != raceEntry->FactionID)
+        SetFactionForRace(getRace());
+
+    if (!HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED))
+    {
+        m_ControlledByPlayer = true;
+        SetUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED);
+        UpdatePvPState();
+    }
+
+    if (charmAura || charmerGuid)
+        SetClientControl(this, true);
 }
 
 void Player::KillPlayer()

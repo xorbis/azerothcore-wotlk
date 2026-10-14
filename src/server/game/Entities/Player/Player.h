@@ -2078,6 +2078,7 @@ public:
     [[nodiscard]] WorldLocation GetCorpseLocation() const { return _corpseLocation; }
     uint32 GetResurrectionSpellId();
     void ResurrectPlayer(float restore_percent, bool applySickness = false);
+    void ClearLeftoverCharm(char const* when);  // XorWoW
     void BuildPlayerRepop();
     void RepopAtGraveyard();
 
