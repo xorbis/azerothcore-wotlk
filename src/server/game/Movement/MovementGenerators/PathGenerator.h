@@ -184,6 +184,7 @@ class PathGenerator
         void BuildPolyPath(G3D::Vector3 const& startPos, G3D::Vector3 const& endPos);
         void BuildPointPath(float const* startPoint, float const* endPoint);
         void BuildShortcut();
+        bool BuildObjectFloorPath(G3D::Vector3 const& startPos, G3D::Vector3 const& endPos);   // XorWoW
 
         [[nodiscard]] NavTerrain GetNavTerrain(float x, float y, float z) const;
         void CreateFilter();

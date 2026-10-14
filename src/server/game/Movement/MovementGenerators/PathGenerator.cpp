@@ -22,6 +22,7 @@
 #include "Log.h"
 #include "MMapMgr.h"
 #include "Map.h"
+#include "MapMgr.h"
 #include "Metric.h"
 #ifdef MOD_PLAYERBOTS
 #include "Player.h"
@@ -182,9 +183,56 @@ bool PathGenerator::CalculatePath(float x, float y, float z, float destX, float 
         return true;
     }
 
+    if (BuildObjectFloorPath(start, dest))
+        return true;
+
     UpdateFilter();
 
     BuildPolyPath(start, dest);
+    return true;
+}
+
+// XorWoW: a guild hall building (Cathedral, Orc Fortress...) is a game object. Its floors are in the
+// dynamic collision but not in the navmesh, which runs on the terrain under them, so a pet or bot
+// pathing to someone on them walked the ground beneath the floor. When either end stands on such a
+// floor and the way is clear, walk straight with every point put on the floor below it.
+bool PathGenerator::BuildObjectFloorPath(G3D::Vector3 const& startPos, G3D::Vector3 const& endPos)
+{
+    Map const* map = _source->GetMap();
+    if (!sMapMgr->GetScriptedInstanceMap(map->GetId()))
+        return false;
+
+    uint32 const phaseMask = _source->GetPhaseMask();
+    float const lift = std::max(_source->GetCollisionHeight(), Z_OFFSET_FIND_HEIGHT);
+    auto onObjectFloor = [&](G3D::Vector3 const& p)
+    {
+        float const objectZ = map->GetMapCollisionData().GetDynamicTree().getHeight(p.x, p.y, p.z + lift, lift + 2.0f, phaseMask);
+        return objectZ > INVALID_HEIGHT && map->GetHeight(p.x, p.y, p.z + lift) < objectZ - 1.0f;
+    };
+    if (!onObjectFloor(startPos) && !onObjectFloor(endPos))
+        return false;
+
+    if (!map->isInLineOfSight(startPos.x, startPos.y, startPos.z + lift, endPos.x, endPos.y, endPos.z + lift,
+                              phaseMask, LINEOFSIGHT_ALL_CHECKS, VMAP::ModelIgnoreFlags::Nothing))
+        return false;
+
+    float const length = (endPos.xy() - startPos.xy()).length();
+    uint32 const steps = std::clamp<uint32>(uint32(std::ceil(length / 2.0f)), 1, std::max<uint32>(std::min<uint32>(_pointPathLimit, MAX_POINT_PATH_LENGTH), 2) - 1);
+
+    Clear();
+    _pathPoints.resize(steps + 1);
+    _pathPoints[0] = startPos;
+    for (uint32 i = 1; i <= steps; ++i)
+    {
+        G3D::Vector3 p = startPos + (endPos - startPos) * (float(i) / steps);
+        float const floorZ = map->GetHeight(phaseMask, p.x, p.y, p.z + lift);
+        if (floorZ > INVALID_HEIGHT)
+            p.z = floorZ;
+        _pathPoints[i] = p;
+    }
+
+    SetActualEndPosition(_pathPoints.back());
+    _type = PathType(PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH);
     return true;
 }
 
