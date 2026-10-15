@@ -127,7 +127,7 @@ namespace
     constexpr char TAG[] = "GHB";
     constexpr char PENDING_KEY[] = "xorwow-guild-hall-build";
     constexpr uint32 PLACEMENT_SPELL = 260010;
-    constexpr uint32 HALL_OBJECT_LIMIT = 400;   // per guild: what one instance spawns at its first visit
+    constexpr uint32 HALL_OBJECT_LIMIT = 1000;  // per guild: what one instance spawns at its first visit
     constexpr float ENTRANCE_CLEARANCE = 4.0f;  // yards kept free around the Guildstone's landing spot
     constexpr uint32 SELECT_REPEAT_MS = 500;    // one right-click sends several requests
     constexpr float LIFT_STEP = 0.1f;           // yards an Alt + wheel notch raises or lowers an object
