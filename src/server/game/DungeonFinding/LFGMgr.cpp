@@ -2272,7 +2272,8 @@ namespace lfg
         }
         else if (out && error == LFG_TELEPORTERROR_OK)
         {
-            if (player->GetMapId() == uint32(dungeon->map))
+            // (XorWoW: not again while the first teleport out is still loading)
+            if (player->GetMapId() == uint32(dungeon->map) && !player->IsBeingTeleportedFar())
                 player->TeleportToEntryPoint();
 
             return;

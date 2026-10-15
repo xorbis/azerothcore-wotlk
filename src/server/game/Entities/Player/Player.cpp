@@ -1662,12 +1662,28 @@ bool Player::TeleportToEntryPoint()
 
     if (loc.m_mapId == MAPID_INVALID)
     {
+        // XorWoW: a second call while the first one's teleport is still loading (the entry point it
+        // used up) - keep that teleport rather than turning it into one to the hearthstone point
+        if (IsBeingTeleportedFar())
+        {
+            LOG_INFO("server.worldserver", "XorWoW entry point: {} already on the way to map {}, second exit ignored",
+                GetName(), GetTeleportDest().GetMapId());
+            return true;
+        }
+
+        LOG_INFO("server.worldserver", "XorWoW entry point: {} has none on map {}, sent to the hearthstone point",
+            GetName(), GetMapId());
         return TeleportTo(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ, GetOrientation());
     }
 
     // XorWoW: a guild hall that no longer takes the player (left the guild, the guild changed halls) - go home
-    if (sMapMgr->GetScriptedInstanceMap(loc.GetMapId()) && sMapMgr->PlayerCannotEnter(loc.GetMapId(), this, false))
-        return TeleportTo(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ, GetOrientation());
+    if (sMapMgr->GetScriptedInstanceMap(loc.GetMapId()))
+        if (Map::EnterState denyReason = sMapMgr->PlayerCannotEnter(loc.GetMapId(), this, false))
+        {
+            LOG_INFO("server.worldserver", "XorWoW entry point: {} refused by guild hall map {} (reason {}), sent to the hearthstone point",
+                GetName(), loc.GetMapId(), uint32(denyReason));
+            return TeleportTo(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ, GetOrientation());
+        }
 
     return TeleportTo(loc);
 }
@@ -11562,7 +11578,10 @@ void Player::SetEntryPoint()
 
         // XorWoW: queued from a guild hall - come back to the same spot in it, not its graveyard
         if (sMapMgr->GetScriptedInstanceMap(GetMapId()))
+        {
             m_entryPointData.joinPos = WorldLocation(GetMapId(), GetPositionX(), GetPositionY(), GetPositionZ(), GetOrientation());
+            LOG_INFO("server.worldserver", "XorWoW entry point: {} will come back to guild hall map {}", GetName(), GetMapId());
+        }
         else if (GetMap()->IsDungeon())
         {
             if (GraveyardStruct const* entry = sGraveyard->GetClosestGraveyard(this, GetTeamId()))
