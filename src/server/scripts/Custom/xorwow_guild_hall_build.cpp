@@ -150,6 +150,9 @@ namespace
     constexpr uint32 MARKER_PHASE = 0x40000000; // the phase the marker spheres are in, added to builders' own
     constexpr uint32 MARKER_ENTRY_BASE = 262000;  // buildings' marker templates: + item (gen_guild_hall.py)
     constexpr uint32 MARKER_COPY_BASE = COPY_BASE + 1000 * COPY_SPAN;  // their copies, as COPY_BASE's
+    constexpr uint32 HIGH_ITEMS = 1000;           // items 1000..1999 (Shop Signs on): templates 265000 + item - 1000
+    constexpr uint32 HIGH_BASE = 265000;          // (gen_guild_hall.py entry_of), copies past the markers'
+    constexpr uint32 HIGH_COPY_BASE = MARKER_COPY_BASE + 1000 * COPY_SPAN;
 
     enum CatalogTeam : uint8 { CATALOG_BOTH = 0, CATALOG_ALLIANCE = 1, CATALOG_HORDE = 2 };
 
@@ -257,12 +260,21 @@ namespace
 
     uint32 CopyEntry(uint32 item, uint32 copy)
     {
+        if (item >= HIGH_ITEMS)
+            return HIGH_COPY_BASE + (item - HIGH_ITEMS) * COPY_SPAN + copy;
         return COPY_BASE + item * COPY_SPAN + copy;
     }
 
     bool IsCopyEntry(uint32 entry)
     {
-        return entry >= COPY_BASE && entry < COPY_BASE + 1000 * COPY_SPAN;
+        return (entry >= COPY_BASE && entry < COPY_BASE + 1000 * COPY_SPAN)
+            || (entry >= HIGH_COPY_BASE && entry < HIGH_COPY_BASE + 1000 * COPY_SPAN);
+    }
+
+    // A catalogue item's own template (260001..260999, 265000..265999), not a copy.
+    bool IsCatalogEntry(uint32 entry)
+    {
+        return (entry > 260000 && entry < 261000) || (entry >= HIGH_BASE && entry < HIGH_BASE + 1000);
     }
 
     uint32 MarkerCopyEntry(uint32 item, uint32 copy)
@@ -280,6 +292,8 @@ namespace
     // Under the lock: the catalogue item a hall object of this gameobject entry is.
     CatalogItem const* ItemOfEntry(uint32 entry)
     {
+        if (entry >= HIGH_COPY_BASE && entry < HIGH_COPY_BASE + 1000 * COPY_SPAN)
+            return FindItem(HIGH_ITEMS + (entry - HIGH_COPY_BASE) / COPY_SPAN);
         if (IsCopyEntry(entry))
             return FindItem((entry - COPY_BASE) / COPY_SPAN);
         if (entry >= MARKER_COPY_BASE && entry < MARKER_COPY_BASE + 1000 * COPY_SPAN)
@@ -2123,7 +2137,7 @@ public:
         // the hall's furniture (GO_FLAG_INTERACT_COND, gameobject_template_addon) is clickable for builders only
         GameObject::XorWoWInteractCheck = [](GameObject const* go, Player const* player)
         {
-            if ((go->GetEntry() <= 260000 || go->GetEntry() >= 261000) && !IsCopyEntry(go->GetEntry()) && !IsMarkerEntry(go->GetEntry()))
+            if (!IsCatalogEntry(go->GetEntry()) && !IsCopyEntry(go->GetEntry()) && !IsMarkerEntry(go->GetEntry()))
                 return false;
             std::lock_guard<std::mutex> guard(builderLock);
             return builders.count(player->GetGUID()) != 0;
