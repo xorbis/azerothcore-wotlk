@@ -979,8 +979,13 @@ bool Guild::BankMoveItemData::_ReserveSpace(uint8 slotId, Item* pItem, Item* pIt
 
 void Guild::BankMoveItemData::CanStoreItemInTab(Item* pItem, uint8 skipSlotId, bool merge, uint32& count)
 {
-    for (uint8 slotId = 0; (slotId < GUILD_BANK_MAX_SLOTS) && (count > 0); ++slotId)
+    // XorWoW: slots are column after column (14 each), so starting at a column and wrapping round
+    // fills it, then the columns to its right, then the ones on its left
+    uint8 const startSlot = (XorWoWBankStartColumn ? XorWoWBankStartColumn(m_pPlayer) % 7 : 0) * 14;
+    for (uint8 i = 0; (i < GUILD_BANK_MAX_SLOTS) && (count > 0); ++i)
     {
+        uint8 const slotId = (startSlot + i) % GUILD_BANK_MAX_SLOTS;
+
         // Skip slot already processed in CanStore (when destination slot was specified)
         if (slotId == skipSlotId)
             continue;
@@ -1047,6 +1052,8 @@ InventoryResult Guild::BankMoveItemData::CanStore(Item* pItem, bool swap)
 }
 
 // Guild
+std::function<uint8(Player*)> Guild::XorWoWBankStartColumn;   // XorWoW
+
 Guild::Guild() :
     m_id(0),
     m_createdDate(0),

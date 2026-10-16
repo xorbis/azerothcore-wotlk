@@ -689,6 +689,10 @@ public:
     Guild();
     ~Guild();
 
+    // XorWoW: the bank column (0-6) a deposit without a slot fills first, then the columns to its right,
+    // wrapping round to the left (xorwow_guild_bank_column.cpp); unset or 0 is the stock slot order
+    static std::function<uint8(Player*)> XorWoWBankStartColumn;
+
     bool Create(Player* pLeader, std::string_view name);
     void Disband();
 
