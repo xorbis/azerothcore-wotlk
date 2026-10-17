@@ -61,6 +61,44 @@ void WorldSession::SendPartyResult(PartyOperation operation, std::string const& 
     SendPacket(&data);
 }
 
+// XorWoW: the smallest player cap of the raid instances that the player or a group member is in
+// (0 if none). The cap itself only stops a player at the instance door ("instance is full"),
+// so the raid would grow past it without a word; invites are refused once it is reached.
+static uint32 RaidCapOf(Player* player, Group* group, std::string& mapName)
+{
+    uint32 cap = 0;
+    auto consider = [&](Player* p)
+    {
+        if (!p || !p->IsInWorld())
+            return;
+        InstanceMap* map = p->GetMap()->ToInstanceMap();
+        if (!map || !map->IsRaid() || p->IsGameMaster())
+            return;
+        uint32 max = map->GetMaxPlayers();
+        if (max && (!cap || max < cap))
+        {
+            cap = max;
+            mapName = map->GetMapName();
+        }
+    };
+    consider(player);
+    if (group)
+        for (GroupReference* itr = group->GetFirstMember(); itr; itr = itr->next())
+            consider(itr->GetSource());
+    return cap;
+}
+
+static bool RaidCapReached(WorldSession* session, Player* player, Group* group, uint32 count)
+{
+    std::string mapName;
+    uint32 cap = RaidCapOf(player, group, mapName);
+    if (!cap || count < cap)
+        return false;
+    session->SendPartyResult(PARTY_OP_INVITE, "", ERR_GROUP_FULL);
+    ChatHandler(session).PSendSysMessage("{} allows {} players at most.", mapName, cap);
+    return true;
+}
+
 void WorldSession::HandleGroupInviteOpcode(WorldPacket& recvData)
 {
     std::string membername;
@@ -194,6 +232,10 @@ void WorldSession::HandleGroupInviteOpcode(WorldPacket& recvData)
         }
     }
 
+    // XorWoW: raid instance cap reached, pending invites counted
+    if (RaidCapReached(this, invitingPlayer, group, group ? group->GetMembersCount() + group->GetInviteeCount() : 1))
+        return;
+
     // xinef: if player has no group, check group invite
     if (!group && invitingPlayer->GetGroupInvite() && invitingPlayer->GetGroupInvite()->GetLeaderGUID() == invitingPlayer->GetGUID())
         group = invitingPlayer->GetGroupInvite();
@@ -304,6 +346,10 @@ void WorldSession::HandleGroupAcceptOpcode(WorldPacket& recvData)
         SendPartyResult(PARTY_OP_INVITE, "", ERR_GROUP_FULL);
         return;
     }
+
+    // XorWoW: the raid instance filled up after the invite (a forming group's leader is not a member yet)
+    if (RaidCapReached(this, leader, group, group->IsCreated() ? group->GetMembersCount() : 1))
+        return;
 
     // Forming a new group, create it
     if (!group->IsCreated())
