@@ -1,10 +1,11 @@
 /*
  * XorWoW: the song title for the XorWoW addon's radio button.
  *
- * The radio itself (Everlook Broadcasting Co., Turtle WoW's community station) plays in the XorWoW
- * launcher on the player's PC - the client cannot play a stream - and neither the launcher nor the
- * addon can tell the game what is on air. The station's Icecast server publishes it
- * (https://radio.turtle-music.org/status-json.xsl, icestats.source.title), so this script reads it
+ * The radio itself (Out of Bounds Entertainment, the old Everlook Broadcasting Co. team of Turtle WoW)
+ * plays in the XorWoW launcher on the player's PC - the client cannot play a stream - and neither the
+ * launcher nor the addon can tell the game what is on air. The station's Icecast server publishes it
+ * (https://radio.outofbounds.live/listen/out_of_bounds/status-json.xsl, icestats.source.title; the
+ * old radio.turtle-music.org expired in 2026-10), so this script reads it
  * every 20 seconds and tells each listening player's addon at every new song:
  * "XorWoW\tRADIO;<title>" (an addon whisper to the player).
  *
@@ -47,8 +48,8 @@ namespace
 
     constexpr char ADDON_PREFIX[] = "XorWoW";
     constexpr char LISTENER_KEY[] = "xorwow-radio";
-    constexpr char STATUS_HOST[] = "radio.turtle-music.org";
-    constexpr char STATUS_PATH[] = "/status-json.xsl";
+    constexpr char STATUS_HOST[] = "radio.outofbounds.live";
+    constexpr char STATUS_PATH[] = "/listen/out_of_bounds/status-json.xsl";
     constexpr auto FETCH_EVERY = 20s;
     constexpr auto FETCH_TIMEOUT = 15s;
     constexpr auto LISTENED_WITHIN = 30s;   // the last listener's update this long ago: stop fetching
