@@ -84,6 +84,9 @@ struct boss_jindo : public BossAI
                 summon->SetReactState(REACT_PASSIVE);
                 if (Unit* target = SelectTarget(SelectTargetMethod::Random, me->GetThreatMgr().GetThreatListSize() > 1 ? 1 : 0))
                 {
+                    // XorWoW: temporary trace for the Brain Wash player that has to be killed twice
+                    LOG_ERROR("scripts", "XorWoW charm: Jin'do totem {} targets {} (alive {}, charmer {})",
+                        summon->GetGUID().ToString(), target->GetName(), target->IsAlive(), target->GetCharmerGUID().ToString());
                     summon->CastSpell(target, summon->m_spells[0], true);
                 }
                 break;

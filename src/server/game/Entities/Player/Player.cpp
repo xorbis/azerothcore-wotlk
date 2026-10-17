@@ -4689,7 +4689,7 @@ void Player::ClearLeftoverCharm(char const* when)
     if (!charmAura && !charmerGuid && !wrongFaction && !notControlled)
         return;
 
-    LOG_WARN("entities.player", "XorWoW: {} left charmed after {} (charm aura {}, charmer {}, faction {} race faction {} old faction {}, player controlled {}), cleaning up",
+    LOG_ERROR("entities.player", "XorWoW: {} left charmed after {} (charm aura {}, charmer {}, faction {} race faction {} old faction {}, player controlled {}), cleaning up",
         GetName(), when, charmAura, charmerGuid.ToString(), GetFaction(), raceEntry ? raceEntry->FactionID : 0, GetOldFactionId(), !notControlled);
 
     RemoveCharmAuras();

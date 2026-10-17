@@ -3757,10 +3757,20 @@ void AuraEffect::HandleModCharm(AuraApplication const* aurApp, uint8 mode, bool 
 
     Unit* caster = GetCaster();
 
+    // XorWoW: temporary trace for the Jin'do Brain Wash player that has to be killed twice
+    if (target->IsPlayer())
+        LOG_ERROR("entities.unit", "XorWoW charm: {} spell {} on {} (alive {}) by {} {} (alive {}), charmer before {} faction before {}",
+            apply ? "apply" : "remove", GetId(), target->GetName(), target->IsAlive(), caster ? caster->GetName() : "<none>",
+            GetCasterGUID().ToString(), caster && caster->IsAlive(), target->GetCharmerGUID().ToString(), target->GetFaction());
+
     if (apply)
         target->SetCharmedBy(caster, CHARM_TYPE_CHARM, aurApp);
     else
         target->RemoveCharmedBy(caster);
+
+    if (target->IsPlayer())
+        LOG_ERROR("entities.unit", "XorWoW charm: {} done on {}, charmer now {} faction now {}",
+            apply ? "apply" : "remove", target->GetName(), target->GetCharmerGUID().ToString(), target->GetFaction());
 }
 
 void AuraEffect::HandleCharmConvert(AuraApplication const* aurApp, uint8 mode, bool apply) const
