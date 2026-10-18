@@ -177,6 +177,17 @@ Map::EnterState MapMgr::PlayerCannotEnter(uint32 mapid, Player* player, bool log
             LOG_DEBUG("maps", "MAP: Player '{}' must be in a raid group to enter instance '{}'", player->GetName(), mapName);
             return Map::CANNOT_ENTER_NOT_IN_RAID;
         }
+
+        // XorWoW: a raid larger than the raid's cap is refused at the door, before the teleport -
+        // outside, a raid may hold 40, but it enters Molten Core (15), ... only once it fits
+        uint32 maxPlayers = mapDiff->maxPlayers ? mapDiff->maxPlayers : entry->maxPlayers;
+        if (!loginCheck && group && maxPlayers && group->GetMembersCount() > maxPlayers)
+        {
+            player->SendTransferAborted(mapid, TRANSFER_ABORT_MAX_PLAYERS);
+            ChatHandler(player->GetSession()).PSendSysMessage("{} allows {} players at most - your raid has {}.",
+                mapName, maxPlayers, group->GetMembersCount());
+            return Map::CANNOT_ENTER_MAX_PLAYERS;
+        }
     }
 
     // xinef: dont allow LFG Group to enter other instance that is selected
