@@ -111,6 +111,12 @@ struct emerald_dragonAI : public WorldBossAI
         events.ScheduleEvent(EVENT_SUMMON_PLAYER, 1s);
     }
 
+    // XorWoW: the stock 30 yard leash ends at the foot of the altar stairs, so the dragons evaded mid-fight
+    float GetLeashRadius(float /*defaultRadius*/) const override
+    {
+        return 90.0f;
+    }
+
     // Target killed during encounter, mark them as suspectible for Aura Of Nature
     void KilledUnit(Unit* who) override
     {

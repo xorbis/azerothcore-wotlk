@@ -245,6 +245,8 @@ public:
     virtual bool CanSeeAlways(WorldObject const* /*obj*/) { return false; }
 
     virtual bool CanBeSeen(Player const* /*seer*/) { return true; }
+    // XorWoW: distance from the home/reset position past which the creature drops its target (CreatureLeashRadius by default)
+    virtual float GetLeashRadius(float defaultRadius) const { return defaultRadius; }
     virtual bool CanAlwaysBeDetectable(WorldObject const* /*seer*/) { return false; }
 
     virtual void PetStopAttack() { }
