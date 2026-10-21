@@ -30,6 +30,7 @@ void AddSC_xorwow_guild_epic_loot();   // guild chat announces a guild member's 
 void AddSC_xorwow_account_professions();   // gathering and secondary professions are account-bound
 void AddSC_xorwow_account_exploration();   // explored zones are shared by the account
 void AddSC_xorwow_account_taxi();   // flight paths are shared by the account
+void AddSC_xorwow_account_reputation();   // earned reputation is shared by the account
 void AddSC_xorwow_tcg();   // XorWoW TCG: the card game's referee, collections, decks and bets
 void AddSC_xorwow_tcg_vendor();   // the guild hall Card Vendor's 15 cards of the day
 void AddSC_xorwow_unit_marks();   // the XorWoW addon's bot, altbot and card drop marks on name plates and tooltips
@@ -54,6 +55,7 @@ void AddCustomScripts()
     AddSC_xorwow_account_professions();
     AddSC_xorwow_account_exploration();
     AddSC_xorwow_account_taxi();
+    AddSC_xorwow_account_reputation();
     AddSC_xorwow_tcg();
     AddSC_xorwow_tcg_vendor();
     AddSC_xorwow_unit_marks();
