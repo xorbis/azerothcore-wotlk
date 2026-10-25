@@ -160,7 +160,8 @@ struct boss_ayamiss : public BossAI
 
             context.Repeat(RAND(2400ms, 3600ms));
         }).Schedule(15s, 28s, [this](TaskContext context) {
-            if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0, true))
+            // Never pick someone who is still on the altar from the previous paralyze
+            if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0, true, true, -SPELL_PARALYZE))
             {
                 DoCast(target, SPELL_PARALYZE, true);
                 instance->SetGuidData(DATA_PARALYZED, target->GetGUID());
@@ -202,7 +203,8 @@ struct boss_ayamiss : public BossAI
         me->SetCanFly(true);
         me->SetDisableGravity(true);
         me->GetMotionMaster()->MovePoint(POINT_AIR, AyamissAirPos);
-        ScheduleTasks();
+        // BossAI::JustEngagedWith already calls ScheduleTasks(); calling it again here ran every
+        // ability twice (two Paralyzes per cycle, double swarmers)
     }
 
 private:
@@ -216,13 +218,18 @@ struct npc_hive_zara_larva : public ScriptedAI
     {
         _instance = me->GetInstanceScript();
         me->SetReactState(REACT_PASSIVE);
+        // Remember who this larva was sent for: DATA_PARALYZED is overwritten by the next Paralyze
+        _targetGUID = _instance->GetGuidData(DATA_PARALYZED);
     }
 
     void MovementInform(uint32 type, uint32 id) override
     {
+        // Feed is an instakill with unlimited range: only use it on our own victim, and only while
+        // they are still paralyzed on the altar, so a late larva can't kill someone back in the raid
         if (type == POINT_MOTION_TYPE && id == POINT_PARALYZE)
-            if (Player* target = ObjectAccessor::GetPlayer(*me, _instance->GetGuidData(DATA_PARALYZED)))
-                DoCast(target, SPELL_FEED);
+            if (Player* target = ObjectAccessor::GetPlayer(*me, _targetGUID))
+                if (target->IsAlive() && target->HasAura(SPELL_PARALYZE))
+                    DoCast(target, SPELL_FEED);
     }
 
     void JustSummoned(Creature* summon) override
@@ -236,6 +243,7 @@ struct npc_hive_zara_larva : public ScriptedAI
 
 private:
     InstanceScript* _instance;
+    ObjectGuid _targetGUID;
 };
 
 struct npc_hive_zara_swarmer : public ScriptedAI
