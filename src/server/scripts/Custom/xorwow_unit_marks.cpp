@@ -8,6 +8,11 @@
  *   "MARK;Q;Name,Name,..."  which of these online characters are bots
  *       -> "MARK;R;Name=*,Name=@,Name"   '*' bot, '@' altbot, no mark: a player, offline or unknown
  *          (the names exactly as asked; split over several messages when long)
+ *   "MARK;S;Name,Name,..."  the same, with the spec of each bot and altbot
+ *       -> "MARK;S;Name=*8.1,Name=@11.2,Name=@,Name"  mark, then class id '.' talent tree (0-2, most points spent);
+ *          the mark alone when no talent point is spent yet
+ *   "MARK;W;Name,Name,..."  the spec of every online character, players too (the /who Spec column)
+ *       -> "MARK;W;Name=8.1,Name"         class id '.' talent tree; the name alone when offline or no point spent
  *   "MARK;C"                the names of the creatures that drop a card
  *       -> "MARK;C;Name,Name,..."         as many messages as it takes
  * Name plates only show a name, so creatures are matched by name: every creature whose loot table holds
@@ -63,7 +68,16 @@ namespace
             Send(player, head + ";" + body);
     }
 
-    void Answer(Player* player, std::string const& names)
+    // "<class>.<tree>" for a character with talent points spent, else "".
+    std::string Spec(Player* target)
+    {
+        if (target->CalculateTalentsPoints() <= target->GetFreeTalentPoints())
+            return "";
+        return Acore::StringFormat("{}.{}", target->getClass(), target->GetMostPointsTalentTree());
+    }
+
+    // kind: 'R' marks, 'S' marks with the specs of bots and altbots, 'W' the specs of everyone
+    void Answer(Player* player, std::string const& names, char kind)
     {
         std::vector<std::string> answers;
         size_t start = 0;
@@ -79,12 +93,20 @@ namespace
 
             std::string name = asked;
             char mark = 0;
+            std::string spec;
             if (normalizePlayerName(name))
                 if (Player* target = ObjectAccessor::FindPlayerByName(name, false))
+                {
                     mark = target->GetSession()->GetBotNameMark();
-            answers.push_back(mark ? asked + '=' + mark : asked);
+                    if (kind == 'W' || (mark && kind == 'S'))
+                        spec = Spec(target);
+                }
+            if (kind == 'W')
+                answers.push_back(spec.empty() ? asked : asked + '=' + spec);
+            else
+                answers.push_back(mark ? asked + '=' + mark + spec : asked);
         }
-        SendList(player, "R", answers);
+        SendList(player, std::string(1, kind), answers);
     }
 }
 
@@ -108,7 +130,11 @@ public:
             if (body == "C")
                 SendList(player, "C", cardCreatures);
             else if (body.rfind("Q;", 0) == 0)
-                Answer(player, body.substr(2));
+                Answer(player, body.substr(2), 'R');
+            else if (body.rfind("S;", 0) == 0)
+                Answer(player, body.substr(2), 'S');
+            else if (body.rfind("W;", 0) == 0)
+                Answer(player, body.substr(2), 'W');
         }
         return false;
     }
