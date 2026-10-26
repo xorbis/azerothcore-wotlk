@@ -84,6 +84,9 @@ enum Misc
 constexpr float veklorOrientationIntro    = 2.241519f;
 constexpr float veknilashOrientationIntro = 1.144451f;
 
+// XorWoW: Heal Brother only reaches a twin this close (stock 60 yd), bots cannot keep them 60 yd apart
+constexpr float healBrotherRange          = 15.0f;
+
 struct boss_twinemperorsAI : public BossAI
 {
     boss_twinemperorsAI(Creature* creature): BossAI(creature, DATA_TWIN_EMPERORS), _introDone(false)
@@ -160,7 +163,12 @@ struct boss_twinemperorsAI : public BossAI
             {
                 me->SetReactState(REACT_AGGRESSIVE);
                 me->SetControlled(false, UNIT_STATE_ROOT);
-                if (Unit* victim = me->SelectNearestTarget())
+                // XorWoW: the emperor takes on whoever was tanking his twin at the spot he lands on
+                Unit* victim = ObjectAccessor::GetUnit(*me, _landingTank);
+                if (!victim || !victim->IsAlive() || !me->IsValidAttackTarget(victim) || !me->IsWithinDist(victim, 60.0f))
+                    victim = me->SelectNearestTarget();
+                _landingTank.Clear();
+                if (victim)
                 {
                     me->AddThreat(victim, 2000.f);
                     AttackStart(victim);
@@ -258,7 +266,7 @@ struct boss_twinemperorsAI : public BossAI
             {
                 if (Creature* twin = GetTwin())
                 {
-                    if (me->IsWithinDist(twin, 60.f))
+                    if (me->IsWithinDist(twin, healBrotherRange))
                         DoCast(twin, SPELL_HEAL_BROTHER, true);
                 }
 
@@ -280,8 +288,14 @@ struct boss_twinemperorsAI : public BossAI
 
     virtual bool IAmVeklor() = 0;
 
+    void SetGUID(ObjectGuid const& guid, int32 /*id*/) override
+    {
+        _landingTank = guid;
+    }
+
 protected:
     bool _introDone;
+    ObjectGuid _landingTank;
 };
 
 struct boss_veknilash : public boss_twinemperorsAI
@@ -375,6 +389,12 @@ struct boss_veklor : public boss_twinemperorsAI
             {
                 DoCastSelf(SPELL_TWIN_TELEPORT_1, true);
                 me->SetControlled(true, UNIT_STATE_ROOT);
+
+                // XorWoW: each emperor lands on his twin's tank (ACTION_AFTER_TELEPORT)
+                if (Unit* tank = veknilash->GetVictim())
+                    SetGUID(tank->GetGUID(), 0);
+                if (Unit* tank = me->GetVictim())
+                    veknilash->AI()->SetGUID(tank->GetGUID(), 0);
 
                 Position veklorPos = me->GetPosition();
                 Position veknilashPos = veknilash->GetPosition();
