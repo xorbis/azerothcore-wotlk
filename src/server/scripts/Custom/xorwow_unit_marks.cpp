@@ -13,10 +13,14 @@
  *          the mark alone when no talent point is spent yet
  *   "MARK;W;Name,Name,..."  the spec of every online character, players too (the /who Spec column)
  *       -> "MARK;W;Name=8.1,Name"         class id '.' talent tree; the name alone when offline or no point spent
- *   "MARK;C"                the names of the creatures that drop a card
- *       -> "MARK;C;Name,Name,..."         as many messages as it takes
+ *   "MARK;C" / "MARK;C;<version>"  the names of the creatures that drop a card; the addon keeps the
+ *                           list it got last with its version and sends that version along
+ *       -> "MARK;V;<version>"             the addon's list is the current one, nothing else follows
+ *       -> "MARK;C;Name,Name,..." x N, then "MARK;V;<version>;<count>"   the whole list (as many messages
+ *          as it takes), its version and how many names it holds, so a lost message shows
  * Name plates only show a name, so creatures are matched by name: every creature whose loot table holds
- * a card (items 261001-261999), read once at startup.
+ * a card (items 261001-261999), read once at startup. Its version is a hash of the names, so it only
+ * changes when the list does.
  */
 
 #include "Chat.h"
@@ -41,6 +45,7 @@ namespace
     constexpr size_t MAX_NAME = 48;       // bytes; character names are 12 letters
 
     std::vector<std::string> cardCreatures;
+    std::string cardVersion;              // 8 hex digits, FNV-1a of the names joined by ','
 
     void Send(Player* player, std::string const& body)
     {
@@ -127,8 +132,16 @@ public:
         if (!player->GetSession()->IsBot())
         {
             std::string const body = msg.substr(prefix.size());
-            if (body == "C")
-                SendList(player, "C", cardCreatures);
+            if (body == "C" || body.rfind("C;", 0) == 0)
+            {
+                if (body.size() > 2 && body.substr(2) == cardVersion)
+                    Send(player, "V;" + cardVersion);
+                else
+                {
+                    SendList(player, "C", cardCreatures);
+                    Send(player, Acore::StringFormat("V;{};{}", cardVersion, cardCreatures.size()));
+                }
+            }
             else if (body.rfind("Q;", 0) == 0)
                 Answer(player, body.substr(2), 'R');
             else if (body.rfind("S;", 0) == 0)
@@ -150,7 +163,7 @@ public:
         cardCreatures.clear();
         if (QueryResult result = WorldDatabase.Query(
             "SELECT DISTINCT ct.`name` FROM `creature_template` ct JOIN `creature_loot_template` l ON l.`Entry` = ct.`lootid` "
-            "WHERE ct.`lootid` <> 0 AND l.`Item` BETWEEN 261001 AND 261999"))
+            "WHERE ct.`lootid` <> 0 AND l.`Item` BETWEEN 261001 AND 261999 ORDER BY ct.`name`"))
         {
             do
             {
@@ -159,7 +172,12 @@ public:
                     cardCreatures.push_back(std::move(name));
             } while (result->NextRow());
         }
-        LOG_INFO("server.loading", ">> XorWoW unit marks: {} creature names drop an XorWoW TCG card", cardCreatures.size());
+        uint32 hash = 2166136261u;
+        for (size_t i = 0; i < cardCreatures.size(); ++i)
+            for (char c : (i ? "," : "") + cardCreatures[i])
+                hash = (hash ^ uint8(c)) * 16777619u;
+        cardVersion = Acore::StringFormat("{:08x}", hash);
+        LOG_INFO("server.loading", ">> XorWoW unit marks: {} creature names drop an XorWoW TCG card (list version {})", cardCreatures.size(), cardVersion);
     }
 };
 
