@@ -69,6 +69,10 @@ struct npc_ouro_spawner : public ScriptedAI
     void Reset() override
     {
         hasSummoned = false;
+        // XorWoW: the spawner looks like a dirt mound and was hostile and attackable, so pets charged and killed it
+        // before any player came within 40 yd: no Ouro, and a 7-day respawn. It only has to watch for players.
+        me->SetReactState(REACT_PASSIVE);
+        me->SetUnitFlag(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE);
         DoCastSelf(SPELL_DIRTMOUND_PASSIVE);
     }
 
@@ -320,6 +324,12 @@ struct npc_dirt_mound : ScriptedAI
             creature->SetHealth(_ouroHealth);
             creature->LowerPlayerDamageReq(creature->GetMaxHealth() - creature->GetHealth());
         }
+    }
+
+    // XorWoW: mounds cannot be killed, the one carrying Summon Ouro would take the boss with it (stuck submerged)
+    void DamageTaken(Unit* /*attacker*/, uint32& damage, DamageEffectType, SpellSchoolMask) override
+    {
+        damage = 0;
     }
 
     void SetData(uint32 type, uint32 data) override
