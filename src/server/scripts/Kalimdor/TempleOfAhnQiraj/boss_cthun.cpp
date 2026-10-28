@@ -203,15 +203,16 @@ struct boss_eye_of_cthun : public BossAI
 
     void ScheduleTask(bool onEngage = false)
     {
+        // XorWoW: no beam during the first 10 seconds of the pull
         scheduler.
-            Schedule(3s, [this, onEngage](TaskContext task)
+            Schedule(onEngage ? 10s : 3s, [this, onEngage](TaskContext task)
             {
                 if (task.GetRepeatCounter() < 3 && onEngage)
                 {
                     if (Unit* target = ObjectAccessor::GetUnit(*me, _beamTarget))
                         DoCast(target, SPELL_GREEN_BEAM);
 
-                    task.Repeat();
+                    task.Repeat(3s);
                 }
                 else
                 {

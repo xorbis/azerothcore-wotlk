@@ -5253,6 +5253,12 @@ void SpellMgr::LoadSpellInfoCorrections()
         spellInfo->AttributesEx3 |= SPELL_ATTR3_ALWAYS_HIT;
     });
 
+    // XorWoW: Eye Beam (C'Thun) jumps to at most 2 more players instead of 60
+    ApplySpellFix({ 26134 }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->Effects[EFFECT_0].ChainTarget = 3;
+    });
+
     for (uint32 i = 0; i < GetSpellInfoStoreSize(); ++i)
     {
         SpellInfo* spellInfo = mSpellInfoMap[i];
