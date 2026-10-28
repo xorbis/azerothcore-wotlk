@@ -91,18 +91,11 @@ bool NPCStaveQuestAI::UnitIsUnfair(Unit* unit) const
             return true;
         }
     }
-    else
+    else if (unit->GetCharmerOrOwnerGUID() != playerGUID)
     {
-        if (unit->GetOwnerGUID() != playerGUID)
-        {
-            // if a creature attacking isn't owned by the player its unfair
-            return true;
-        }
-        else if (!IsAllowedEntry(unit->GetEntry()))
-        {
-            // if not in the whitelist its unfair
-            return true;
-        }
+        // XorWoW: anything the hunter owns (pet, snakes, traps) is fair; the old entry whitelist
+        // made every pet unfair because pets keep their beast's creature entry
+        return true;
     }
 
     return false;
@@ -194,6 +187,9 @@ void NPCStaveQuestAI::StoreAttackerGuidValue(Unit* attacker)
     {
         return;
     }
+
+    // XorWoW: count a pet's hits as its owner's, so the pet doesn't make the kill a party kill
+    attacker = attacker->GetCharmerOrOwnerOrSelf();
 
     uint64 guidValue = attacker->GetGUID().GetRawValue();
     bool isGUIDPresent = std::find(attackerGuids.begin(), attackerGuids.end(), guidValue) != attackerGuids.end();
