@@ -840,12 +840,8 @@ void PathGenerator::CreateFilter()
 
     _filter.setIncludeFlags(includeFlags);
     _filter.setExcludeFlags(excludeFlags);
-
 #ifdef MOD_PLAYERBOTS
-    // Bots bias their routes away from deep water (swim only when necessary). poly.area == poly.flags ==
-    // NavTerrain, so NAV_WATER doubles as the water area index. Real players and creatures assign no cost.
-    if (isBot)
-        _filter.setAreaCost(NAV_WATER, 20.0f);
+    _isBotFilter = isBot;
 #endif
 
     UpdateFilter();
@@ -853,6 +849,15 @@ void PathGenerator::CreateFilter()
 
 void PathGenerator::UpdateFilter()
 {
+#ifdef MOD_PLAYERBOTS
+    // Bots bias their routes away from deep water (swim only when necessary). poly.area == poly.flags ==
+    // NavTerrain, so NAV_WATER doubles as the water area index. Real players and creatures assign no cost.
+    // The cost is per bot and re-read on every path, as follow paths reuse their generator: playerbots'
+    // "avoid water" strategy sets it (1 = wade in like a player).
+    if (_isBotFilter)
+        _filter.setAreaCost(NAV_WATER, _source->ToPlayer()->GetBotNavWaterCost());
+#endif
+
     // allow creatures to cheat and use different movement types if they are moved
     // forcefully into terrain they can't normally move in
     if (Unit const* _sourceUnit = _source->ToUnit())

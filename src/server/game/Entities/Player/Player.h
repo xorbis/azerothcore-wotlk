@@ -1135,6 +1135,11 @@ public:
     void SetInWater(bool apply);
 
     [[nodiscard]] bool IsInWater() const override { return m_isInWater; }
+#ifdef MOD_PLAYERBOTS
+    // Detour cost of water polys on this bot's paths; playerbots lowers it to 1 when the bot should wade in
+    [[nodiscard]] float GetBotNavWaterCost() const { return m_botNavWaterCost; }
+    void SetBotNavWaterCost(float cost) { m_botNavWaterCost = cost; }
+#endif
     [[nodiscard]] bool IsFalling() const;
     bool IsInAreaTriggerRadius(AreaTrigger const* trigger, float delta = 0.f) const;
 
@@ -3039,6 +3044,9 @@ private:
     uint8 m_MirrorTimerFlags;
     uint8 m_MirrorTimerFlagsLast;
     bool m_isInWater;
+#ifdef MOD_PLAYERBOTS
+    float m_botNavWaterCost = 20.0f;
+#endif
 
     // Current teleport data
     WorldLocation teleportStore_dest;
