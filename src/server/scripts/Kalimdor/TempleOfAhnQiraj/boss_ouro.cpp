@@ -22,6 +22,7 @@
 #include "GridNotifiersImpl.h"
 #include "Player.h"
 #include "ScriptedCreature.h"
+#include "SpellMgr.h"
 #include "temple_of_ahnqiraj.h"
 
 enum Spells
@@ -129,7 +130,7 @@ struct boss_ouro : public BossAI
             scheduler.Schedule(1s, [this](TaskContext context)
                 {
                     if (!IsPlayerWithinMeleeRange())
-                        DoSpellAttackToRandomTargetIfReady(SPELL_BOULDER);
+                        CastBoulder();
 
                     context.Repeat();
                 })
@@ -139,6 +140,32 @@ struct boss_ouro : public BossAI
                         context.Repeat();
                     });
         }
+    }
+
+    // XorWoW: CanAIAttack (melee only) puts everyone out of melee offline on the threat list, which SelectTarget skips,
+    // so Boulder had no target in exactly the case it is for. Pick from the whole list instead.
+    void CastBoulder()
+    {
+        if (me->IsActionPreventedByCasting() || !me->isAttackReady())
+            return;
+
+        SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(SPELL_BOULDER);
+        if (!spellInfo)
+            return;
+
+        std::vector<Unit*> targets;
+        for (ThreatReference const* ref : me->GetThreatMgr().GetUnsortedThreatList())
+        {
+            Unit* target = ref->GetVictim();
+            if (target->IsPlayer() && target->IsAlive() && me->IsWithinCombatRange(target, spellInfo->GetMaxRange(false)))
+                targets.push_back(target);
+        }
+
+        if (targets.empty())
+            return;
+
+        me->CastSpell(Acore::Containers::SelectRandomContainerElement(targets), SPELL_BOULDER, false);
+        me->resetAttackTimer();
     }
 
     void Submerge()
@@ -274,7 +301,9 @@ struct boss_ouro : public BossAI
 
     void EnterEvadeMode(EvadeReason /*why*/) override
     {
-        if (me->GetThreatMgr().IsThreatListEmpty())
+        // XorWoW: include offline references. Everyone out of melee is offline (CanAIAttack), so a knockback with no
+        // one left in melee read as an empty threat list and ended the encounter on the spot.
+        if (me->GetThreatMgr().IsThreatListEmpty(true))
         {
             DoCastSelf(SPELL_OURO_SUBMERGE_VISUAL);
             me->DespawnOrUnsummon(1s);

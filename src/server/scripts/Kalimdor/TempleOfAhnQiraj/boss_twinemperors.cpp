@@ -124,8 +124,23 @@ struct boss_twinemperorsAI : public BossAI
             Talk(SAY_KILL);
     }
 
+    void Reset() override
+    {
+        BossAI::Reset();
+        ClearTeleportState();
+    }
+
+    // XorWoW: a wipe inside the 2s after a teleport cancelled the task that frees them, leaving both emperors passive and rooted for every later pull
+    void ClearTeleportState()
+    {
+        me->SetReactState(REACT_AGGRESSIVE);
+        me->SetControlled(false, UNIT_STATE_ROOT);
+        _landingTank.Clear();
+    }
+
     void EnterEvadeMode(EvadeReason why) override
     {
+        ClearTeleportState();
         BossAI::EnterEvadeMode(why);
 
         if (Creature* twin = GetTwin())
@@ -137,7 +152,15 @@ struct boss_twinemperorsAI : public BossAI
     {
         if (Creature* twin = GetTwin())
             if (twin->IsAlive())
+            {
+                // XorWoW: the twin dies to his brother, so hand him our looters; Twin Empathy is self-cast and never set one
+                if (Player* recipient = me->GetLootRecipient())
+                    twin->SetLootRecipient(recipient);
+                else if (killer)
+                    twin->SetLootRecipient(killer);
+                twin->LowerPlayerDamageReq(twin->GetMaxHealth());
                 Unit::Kill(me, twin);
+            }
 
         Talk(SAY_DEATH);
 
