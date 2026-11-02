@@ -188,6 +188,25 @@ Map::EnterState MapMgr::PlayerCannotEnter(uint32 mapid, Player* player, bool log
                 mapName, maxPlayers, group->GetMembersCount());
             return Map::CANNOT_ENTER_MAX_PLAYERS;
         }
+
+        // XorWoW: a raid is played by at least two people - the rest of the raid may be bots (altbots count as bots)
+        static constexpr uint32 MIN_HUMANS_IN_RAID = 2;
+        if (!loginCheck && group && !GetScriptedInstanceMap(mapid))
+        {
+            uint32 humans = 0;
+            for (GroupReference* itr = group->GetFirstMember(); itr; itr = itr->next())
+                if (Player* member = itr->GetSource())
+                    if (member->GetSession() && !member->GetSession()->IsBot())
+                        ++humans;
+
+            if (humans < MIN_HUMANS_IN_RAID)
+            {
+                player->SendTransferAborted(mapid, TRANSFER_ABORT_MAP_NOT_ALLOWED);
+                ChatHandler(player->GetSession()).PSendSysMessage("{} needs at least {} players in the raid - the rest can be bots.",
+                    mapName, MIN_HUMANS_IN_RAID);
+                return Map::CANNOT_ENTER_UNSPECIFIED_REASON;
+            }
+        }
     }
 
     // xinef: dont allow LFG Group to enter other instance that is selected
