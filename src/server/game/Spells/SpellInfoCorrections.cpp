@@ -5253,10 +5253,13 @@ void SpellMgr::LoadSpellInfoCorrections()
         spellInfo->AttributesEx3 |= SPELL_ATTR3_ALWAYS_HIT;
     });
 
-    // XorWoW: Eye Beam (C'Thun) jumps to at most 2 more players instead of 60
+    // XorWoW: Eye Beam (C'Thun) jumps to at most 2 more players instead of 60,
+    // and hits for half (1312-1687 instead of 2625-3375) so it never one-shots a player (user, 2026-11-02)
     ApplySpellFix({ 26134 }, [](SpellInfo* spellInfo)
     {
         spellInfo->Effects[EFFECT_0].ChainTarget = 3;
+        spellInfo->Effects[EFFECT_0].BasePoints = 1311;
+        spellInfo->Effects[EFFECT_0].DieSides = 376;
     });
 
     for (uint32 i = 0; i < GetSpellInfoStoreSize(); ++i)
