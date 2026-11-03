@@ -16,8 +16,10 @@
  */
 
 #include "CreatureGroups.h"
+#include "GameTime.h"
 #include "InstanceMapScript.h"
 #include "InstanceScript.h"
+#include "ObjectMgr.h"
 #include "Player.h"
 #include "TaskScheduler.h"
 #include "temple_of_ahnqiraj.h"
@@ -221,16 +223,46 @@ public:
             {
                 case DATA_OURO:
                     if (state == FAIL)
-                    {
-                        if (Creature* ouroSpawner = GetCreature(DATA_OURO_SPAWNER))
-                            ouroSpawner->Respawn();
-                    }
+                        RespawnOuroSpawner();
                     break;
                 default:
                     break;
             }
 
             return true;
+        }
+
+        void OnPlayerEnter(Player* player) override
+        {
+            InstanceScript::OnPlayerEnter(player);
+
+            // XorWoW: also heals instances whose spawner already sits on its weekly timer after a wipe
+            EncounterState ouroState = GetBossState(DATA_OURO);
+            if (ouroState != DONE && ouroState != IN_PROGRESS && !GetCreature(DATA_OURO))
+                RespawnOuroSpawner();
+        }
+
+        // XorWoW: the spawner despawns when it summons Ouro. Under dynamic respawn a despawned creature leaves the map,
+        // so GetCreature() found nothing to Respawn() after a wipe and the spawner waited out its 7-day timer instead.
+        // A respawn time of now lets the map's respawn tick (every 5 s) bring it back.
+        void RespawnOuroSpawner()
+        {
+            if (Creature* ouroSpawner = GetCreature(DATA_OURO_SPAWNER))
+            {
+                if (!ouroSpawner->IsAlive())
+                    ouroSpawner->Respawn();
+                return;
+            }
+
+            std::vector<ObjectGuid::LowType> pending;
+            for (auto const& [spawnId, respawnTime] : instance->GetCreatureRespawnTimes())
+                if (CreatureData const* data = sObjectMgr->GetCreatureData(spawnId))
+                    if (data->id == NPC_OURO_SPAWNER)
+                        pending.push_back(spawnId);
+
+            time_t now = GameTime::GetGameTime().count();
+            for (ObjectGuid::LowType spawnId : pending)
+                instance->SaveCreatureRespawnTime(spawnId, now);
         }
 
     private:
