@@ -36,6 +36,7 @@ void AddSC_xorwow_tcg_vendor();   // the guild hall Card Vendor's 15 cards of th
 void AddSC_xorwow_unit_marks();   // the XorWoW addon's bot, altbot and card drop marks on name plates and tooltips
 void AddSC_xorwow_item_lock();   // items locked in the bags or bank cannot be sold to a vendor
 void AddSC_xorwow_guild_bank_column();   // the guild bank column the XorWoW addon's radio buttons pick for deposits
+void AddSC_xorwow_view_distance();   // the XorWoW addon's Graphics slider for how far creatures and objects are seen
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -61,4 +62,5 @@ void AddCustomScripts()
     AddSC_xorwow_unit_marks();
     AddSC_xorwow_item_lock();
     AddSC_xorwow_guild_bank_column();
+    AddSC_xorwow_view_distance();
 }

@@ -5937,7 +5937,9 @@ void Player::SaveRecallPosition()
 
 void Player::SendMessageToSet(WorldPacket const* data, bool self) const
 {
-    SendMessageToSetInRange(data, GetVisibilityRange(), self);
+    // XorWoW: 0 = everyone who sees this player. With the map's range here, a bot walking 300 yards from
+    // a player with a longer view distance (xorwow_view_distance.cpp) would stand still on that screen.
+    SendMessageToSetInRange(data, 0.0f, self);
 }
 
 void Player::SendMessageToSetInRange(WorldPacket const* data, float dist, bool self) const
@@ -16739,6 +16741,13 @@ Optional<float> Player::GetFarSightDistance() const
 float Player::GetSightRange(WorldObject const* target) const
 {
     float sightRange = WorldObject::GetSightRange(target);
+
+    // XorWoW: the player's own reach, where it is longer than the map's. Not in battlegrounds and arenas
+    // (an arena is 30 yards until its gates open), and not for what was made small on purpose.
+    if (_viewDistance > sightRange && !GetMap()->IsBattlegroundOrArena()
+        && (!target || !target->IsVisibilityOverridden() || target->GetVisibilityOverrideDistance() >= VISIBILITY_DISTANCE_NORMAL))
+        sightRange = _viewDistance;
+
     if (_farSightDistance)
         sightRange += *_farSightDistance;
 

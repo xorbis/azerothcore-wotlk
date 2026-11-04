@@ -2685,6 +2685,10 @@ public:
     void ResetFarSightDistance();
     [[nodiscard]] Optional<float> GetFarSightDistance() const;
 
+    // XorWoW: the reach this player picked on the addon's Graphics page, 0 for the map's own (xorwow_view_distance.cpp)
+    void SetViewDistance(float yards) { _viewDistance = yards; }
+    [[nodiscard]] float GetViewDistance() const { return _viewDistance; }
+
     float GetSightRange(WorldObject const* target = nullptr) const override;
     bool IsWorldObjectOutOfSightRange(WorldObject const* target) const;
 
@@ -3090,6 +3094,7 @@ private:
     WorldLocation _corpseLocation;
 
     Optional<float> _farSightDistance = { };
+    float _viewDistance = 0.0f;
 
     bool _wasOutdoor;
 
