@@ -21,6 +21,7 @@
 #include "ScriptedCreature.h"
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
+#include "WorldSession.h"
 #include "temple_of_ahnqiraj.h"
 
 enum Spells
@@ -124,6 +125,19 @@ public:
     bool operator()(Unit* unit) const
     {
         return unit->IsPlayer() && !unit->HasAura(SPELL_DIGESTIVE_ACID) && (unit->GetPositionZ() > 0.0f);
+    }
+};
+
+// XorWoW: the swallow picks humans and altbots first, regular bots only when none of them is left on the surface
+class SwallowPrioritySelector : public NotInStomachSelector
+{
+public:
+    bool operator()(Unit* unit) const
+    {
+        if (!NotInStomachSelector::operator()(unit))
+            return false;
+
+        return unit->ToPlayer()->GetSession()->GetBotNameMark() != '*';
     }
 };
 
@@ -398,7 +412,11 @@ struct boss_cthun : public BossAI
     {
         scheduler.Schedule(13800ms, [this](TaskContext context)
         {
-            if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, NotInStomachSelector()))
+            Unit* target = SelectTarget(SelectTargetMethod::Random, 0, SwallowPrioritySelector());
+            if (!target)
+                target = SelectTarget(SelectTargetMethod::Random, 0, NotInStomachSelector());
+
+            if (target)
             {
                 target->CastSpell(target, SPELL_MOUTH_TENTACLE, true);
 
